@@ -175,5 +175,18 @@ B2_Cond_QC <- ggplot(B2_QA, aes(x=DateTime, y=SpCond_uScm, color=Flag_SpCond_uSc
   xlab("Year")
   
 B2_Cond_QC
+
+ggplot(subset(B2_QA,Flag_SpCond_uScm %in% "0")) + 
+         geom_point(aes(x=DateTime, y=SpCond_uScm), color = "blue4")+
+  theme_bw()+
+   theme(axis.title=element_text(size=16),
+        axis.text=element_text(size=14))+
+  theme(legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14))+
+  theme(panel.grid = element_blank())+
+  ylab(expression(Specific~Conductivity~(mu*S~cm^{-1})))+
+  xlab("Year")
+  
+  
 ```
 
