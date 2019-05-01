@@ -1,0 +1,176 @@
+---
+title: "StreamLab_QAQC"
+author: "Mary Lofton & Lauren Wind"
+date: "April 16, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#load packages
+```{r}
+#install.packages("pacman")
+pacman::p_load(tidyverse, lubridate)
+```
+
+#read in Bridge 1 data and QAQC
+```{r}
+B1_WQ <- read_csv("./Bridge 1_WQ.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Time = X2,
+         meridiemoffset = ifelse(X3 == "AM",0,12),
+         Record_number = as.double(RECORD),
+         Temp_degC = as.double(Temp),
+         SpCond_uScm = as.double(Con)*1000,
+         pH = as.double(pH),
+         Turb_NTU = as.double(Turb),
+         DO_pct = as.double(DOpct),
+         DO_mgL = as.double(DOmgl),
+         Batt_V = as.double(Batt)) %>%
+  #calculate datetime from date, time, AM/PM
+  mutate(DateTime = Date + Time + meridiemoffset*3600) %>%
+  #select only the columns we want
+  select(DateTime, Record_number, Temp_degC, SpCond_uScm, pH, Turb_NTU, DO_pct, DO_mgL, Batt_V) %>%
+  mutate(Bridge = 1)
+
+B1_QA <- B1_WQ %>%
+  mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
+         Flag_SpCond_uScm = ifelse(SpCond_uScm < 50 | SpCond_uScm > 1500, 1, 0),
+         Flag_pH = ifelse(pH <6 | pH >9, 1, 0),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 1000, 1, 0), #Timpano et al. 2010
+         Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
+         Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
+         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
+
+#dates when vars other than temp and DO came online? should probably populate w/ NAs
+```
+
+#Bridge 2 read data and QAQC
+```{r}
+
+B2_WQ <- read_csv("./Bridge 2_WQ.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Time = X2,
+         meridiemoffset = ifelse(X3 == "AM",0,12),
+         Record_number = as.double(RECORD),
+         Temp_degC = as.double(Temp_degC),
+         SpCond_uScm = as.double(`SpCond_mS/cm`)*1000,
+         pH = as.double(pH),
+         Turb_NTU = as.double(Turb_NTU),
+         DO_pct = as.double(`DO_%`),
+         DO_mgL = as.double(`DO_mg/l`),
+         Batt_V = as.double(Batt_V_Min)) %>%
+  #calculate datetime from date, time, AM/PM
+  mutate(DateTime = Date + Time + meridiemoffset*3600) %>%
+  #select only the columns we want
+  select(DateTime, Record_number, Temp_degC, SpCond_uScm, pH, Turb_NTU, DO_pct, DO_mgL, Batt_V) %>%
+  mutate(Bridge = 2)
+
+B2_QA <- B2_WQ %>%
+  mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
+         Flag_SpCond_uScm = ifelse(SpCond_uScm < 50 | SpCond_uScm > 1500, 1, 0),
+         Flag_pH = ifelse(pH <6 | pH >9, 1, 0),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 1000, 1, 0), #Timpano et al. 2010
+         Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
+         Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
+         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
+```
+
+#Bridge 1 stage data and QAQC
+```{r}
+B1_stage <- read_csv("./Bridge 1_Stage.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Time = X2,
+         meridiemoffset = ifelse(X3 == "AM",0,12),
+         Record_number = as.double(RECORD),
+         Lvl_m = as.double(Lvl_m)) %>%
+  #calculate datetime from date, time, AM/PM
+  mutate(DateTime = Date + Time + meridiemoffset*3600) %>%
+  #select only the columns we want
+  select(DateTime, Record_number, Lvl_m) %>%
+  mutate(Bridge = 1)
+
+B1_stage_QA <- B1_stage %>%
+  mutate(Flag_Lvl_m = ifelse(Lvl_m < 0.2 | Lvl_m > 4, 1, 0))
+
+```
+
+#Data Viz
+```{r}
+#Bridge 1
+plot1 <- ggplot(data = B1_QA, aes(x = DateTime, y = Turb_NTU, colour = Flag_Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot1
+
+plot2data <- subset(B1_QA,year(B1_QA$DateTime) == 2018)
+
+plot2 <- ggplot(data = plot2data, aes(x = DateTime, y = Turb_NTU, colour = Flag_Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot2
+
+plot3data <- subset(B1_QA, Flag_Turb_NTU == 0 & year(B1_QA$DateTime) %in% c(2014:2017) & month(B1_QA$DateTime) %in% c(2:5))
+
+plot3 <- ggplot(data = plot3data, aes(x = DateTime, y = Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot3
+
+plot4data <- B1_QA %>%
+  filter(Flag_Turb_NTU == 0 & year(DateTime) == 2017) %>%
+  mutate(Day = date(DateTime)) %>%
+  group_by(Day) %>%
+  summarize(daily_turb_avg = mean(Turb_NTU))
+
+plot4 <- ggplot(data = plot4data, aes(x = Day, y = daily_turb_avg))+
+  geom_point()+
+  theme_bw()
+plot4
+
+plot5data <- subset(B1_QA,year(B1_QA$DateTime) == 2016 & month(B1_QA$DateTime) %in% c(9:10))
+
+plot5 <- ggplot(data = plot5data, aes(x = DateTime, y = Turb_NTU, colour = Flag_Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot5
+
+plot6data <- subset(B1_QA,year(B1_QA$DateTime) == 2014 & month(B1_QA$DateTime) == 3)
+
+plot6 <- ggplot(data = plot6data, aes(x = DateTime, y = Turb_NTU, colour = Flag_Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot6
+
+plot7data <- subset(B1_QA, Flag_Turb_NTU == 0 & Flag_SpCond_uScm == 0)
+
+plot7 <- ggplot(data = plot7data, aes(x = SpCond_uScm, y = Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot7
+
+plot8data <- left_join(B1_QA, B1_stage_QA, by = c("DateTime","Bridge")) %>%
+  filter(Turb_NTU <= 2000 & Turb_NTU >= 0 & Flag_Lvl_m == 0)
+
+plot8 <- ggplot(data = plot8data, aes(x = Lvl_m, y = Turb_NTU))+
+  geom_point()+
+  theme_bw()
+plot8
+
+plot8b <- ggplot(data = plot8data, aes(x = log(Lvl_m), y = log(Turb_NTU)))+
+  geom_point()+
+  theme_bw()
+plot8b
+```
+
