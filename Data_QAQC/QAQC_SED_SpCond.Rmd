@@ -190,3 +190,15 @@ ggplot(subset(B2_QA,Flag_SpCond_uScm %in% "0")) +
   
 ```
 
+```{r}
+library(grid)
+library(gridExtra)
+
+tiff("./B1_cond.tiff", units="in", width=7, height=4, res=300)
+grid.arrange(B1_Cond_QC)
+dev.off()
+
+tiff("./B2_cond.tiff", units="in", width=7, height=4, res=300)
+grid.arrange(B2_Cond_QC)
+dev.off()
+```
