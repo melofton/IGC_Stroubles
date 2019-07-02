@@ -1,0 +1,157 @@
+---
+title: "QAQC_LLW_CAB_UpdSht_Stage"
+author: "Wind & Baciocco"
+date: "5/1/2019"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#load packages
+```{r}
+install.packages("pacman")
+pacman::p_load(tidyverse, lubridate)
+```
+
+#read in Bridge 1 data and QAQC
+```{r}
+B1_WQ <- read_csv("./6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  #still not sure what to do about the "meridiem offset" that was in the code for the much older sheet.
+  mutate(DateTime = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Record_number = as.double(RECORD),
+         Temp_degC = as.double(Temp),
+         SpCond_uScm = as.double(Con)*1000,
+         pH = as.double(pH),
+         Turb_NTU = as.double(Turb),
+         DO_pct = as.double(DOpct),
+         DO_mgL = as.double(DOmgl),
+         Batt_V = as.double(Batt)) %>%
+  # Adjust DateTime with AM/PM
+  # mutate(DateTime = Date + meridiemoffset*3600) %>%
+ #select only the columns we want
+  select(DateTime, Record_number, Temp_degC, SpCond_uScm, pH, Turb_NTU, DO_pct, DO_mgL, Batt_V) %>%
+  mutate(Bridge = 1) %>%
+  #It seemed like all the WQ for repeated DateTimes were the same... I thought it would be okay to drop every row with a repeated date time after the first row. (See "duplicates.R" for verification that every row with a repeated date time also has repeated WQ sensor values.)
+  distinct( DateTime, .keep_all = TRUE)
+
+B1_QA <- B1_WQ %>%
+  mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
+         Flag_SpCond_uScm = ifelse(SpCond_uScm < 50 | SpCond_uScm > 1500, 1, 0),
+         Flag_pH = ifelse(pH <6 | pH >9, 1, 0),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 1000, 1, 0), #Timpano et al. 2010
+         Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
+         Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
+         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
+
+```
+
+
+
+#Bridge 1 stage data read-in, interp, and QAQC
+```{r}
+B1_stage <- read_csv("./6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(DateTime = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone() ),
+         Record_number = as.double(RECORD),
+         Lvl_m = as.double(Lvl_m)) %>%
+  #This code was in "as.POSIXct(): "meridiemoffset = ifelse(X3 == "AM",0,12" Is it still needed?
+  #calculate datetime from date, time, AM/PM
+  #mutate(DateTime = Date + Time + meridiemoffset*3600) %>%
+  #select only the columns we want
+  select(DateTime, Record_number, Lvl_m) %>%
+  #filter out every row with a repeated DateTime after the first. Again, see "duplicates.R" for a more in-depth examination of why duplicate rows in this data.
+  distinct( DateTime, .keep_all = TRUE ) %>%  
+  #Also filter out NaN values for stage.
+  filter( !is.na(Lvl_m) )
+
+
+
+#Make Bridge 1 stage observations (taken every 10 min) compatible with WQ data taken every 15
+#"loess()", which actually comes up with a polynomial to fit the local area, could be a possibly better, possibly slightly more accurate way to generate interpolated values.
+#This section works in two parts:
+#First, it generates a sheet of stage values linearly interpolated between the 10 and 20 or 40 and 50 minute marks.
+#Second, it merges those values (placed "on the 45 & 15") with the actual stage values which were recorded on the hour and 30 minute marks.
+#Because the stage data set starts earlier than WQ by part of a year, we only see interpolated values a bit of the way down in the merged dataset.
+B1_intrp_stage <- approx( x = B1_stage$DateTime, y = B1_stage$Lvl_m,
+                          #This filter function in xout ensures that approx() doesn't generalize too much. It filters B1_QA's dates for those which fall in hours where there are actual stage values to generate a linear rule. The "unit" parameter below can be changed to make this more or less exact.
+                          xout = filter( B1_QA["DateTime"], any( ceiling_date(DateTime, unit = "hours") %in% ceiling_date(B1_stage$DateTime, unit = "hours"))) %>% pull(),
+                          method = "linear", rule = 2 ) %>% 
+  tbl_df() %>%
+  #drop entries that are on the hour or the 30.
+  filter( minute(x) == 15 | minute(x) == 45 )
+  #rename columns
+  colnames(B1_intrp_stage) <- c("DateTime", "Lvl_m")
+
+
+#Merge the interpolated values with the actual stage values measured on the hours and the 30s, arrange the sheet, and record it.
+B1_stage <- add_row( filter( B1_stage, minute(DateTime) != 10 & minute(DateTime) != 20 & minute(DateTime) != 40 & minute(DateTime) != 50 ),
+                         DateTime = B1_intrp_stage$DateTime, Lvl_m = B1_intrp_stage$Lvl_m ) %>%
+  arrange(DateTime)
+
+
+
+B1_stage_QA <- B1_stage %>%
+  mutate( bridge = 1, Flag_Lvl_m = ifelse(Lvl_m < 0.1 | Lvl_m > 4, 1, 0))
+
+```
+
+
+
+#Bridge 1 discharge calculated and added to WQ sheet
+```{r}
+
+stageToDischarge <- function( a ) {
+    
+    if( a < 0.7 ){
+        return( 4.89292 * a ^ 1.9887 )
+    } else {
+        return( 13.599 * a - 7.0945 )
+    }
+}
+
+
+B1_stage_QA$Discharge <- sapply( B1_stage_QA$Lvl_m, stageToDischarge)
+
+
+
+B1_QA <- B1_QA[ B1_QA$DateTime %in% B1_stage_QA$DateTime, ]
+B1_QA$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_QA$DateTime]
+```
+
+
+#ploting da stage data
+```{r}
+#Bridge 1
+stage1 <- ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
+  geom_point()+
+  theme_bw()
+
+stage1
+```
+
+ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
+  geom_point()+
+  theme_bw()
+
+s2 <- subset(B1_stage_QA,year(B1_stage$DateTime) == 2018)
+
+ggplot(data = s2, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
+  geom_point()+
+  theme_bw()
+
+ggplot(data = B2_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
+  geom_point()+
+  theme_bw()
+  
+plot1 <- ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
+  geom_point()+
+  theme_bw()
+
