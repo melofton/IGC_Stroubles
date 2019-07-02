@@ -16,13 +16,13 @@ install.packages("pacman")
 pacman::p_load(tidyverse, lubridate)
 ```
 
-#read in Bridge 1 data and QAQC
+#read in Bridge WQ 1 data
 ```{r}
-B1_WQ <- read_csv("./6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
+B1_WQ <- read_csv("../6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
-  #still not sure what to do about the "meridiem offset" that was in the code for the much older sheet.
+  #The "meridiem offset" in the older code doesn't seem to be needed. It looks like times are pulled correctly from the excel files.
   mutate(DateTime = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
          Record_number = as.double(RECORD),
          Temp_degC = as.double(Temp),
@@ -40,29 +40,21 @@ B1_WQ <- read_csv("./6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
   #It seemed like all the WQ for repeated DateTimes were the same... I thought it would be okay to drop every row with a repeated date time after the first row. (See "duplicates.R" for verification that every row with a repeated date time also has repeated WQ sensor values.)
   distinct( DateTime, .keep_all = TRUE)
 
-B1_QA <- B1_WQ %>%
-  mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
-         Flag_SpCond_uScm = ifelse(SpCond_uScm < 50 | SpCond_uScm > 1500, 1, 0),
-         Flag_pH = ifelse(pH <6 | pH >9, 1, 0),
-         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 1000, 1, 0), #Timpano et al. 2010
-         Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
-         Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
-         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
 
 ```
 
 
 
-#Bridge 1 stage data read-in, interp, and QAQC
+#Read-in, interp, and QAQC for Bridge 1 stage
 ```{r}
-B1_stage <- read_csv("./6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
+
+B1_stage <- read_csv("../6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
   mutate(DateTime = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone() ),
          Record_number = as.double(RECORD),
          Lvl_m = as.double(Lvl_m)) %>%
-  #This code was in "as.POSIXct(): "meridiemoffset = ifelse(X3 == "AM",0,12" Is it still needed?
   #calculate datetime from date, time, AM/PM
   #mutate(DateTime = Date + Time + meridiemoffset*3600) %>%
   #select only the columns we want
@@ -81,8 +73,8 @@ B1_stage <- read_csv("./6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
 #Second, it merges those values (placed "on the 45 & 15") with the actual stage values which were recorded on the hour and 30 minute marks.
 #Because the stage data set starts earlier than WQ by part of a year, we only see interpolated values a bit of the way down in the merged dataset.
 B1_intrp_stage <- approx( x = B1_stage$DateTime, y = B1_stage$Lvl_m,
-                          #This filter function in xout ensures that approx() doesn't generalize too much. It filters B1_QA's dates for those which fall in hours where there are actual stage values to generate a linear rule. The "unit" parameter below can be changed to make this more or less exact.
-                          xout = filter( B1_QA["DateTime"], any( ceiling_date(DateTime, unit = "hours") %in% ceiling_date(B1_stage$DateTime, unit = "hours"))) %>% pull(),
+                          #This filter function in xout ensures that approx() doesn't generalize too much. It filters B1_WQ's dates for those which fall in hours where there are actual stage values to generate a linear rule. The "unit" parameter below can be changed to make this more or less exact.
+                          xout = filter( B1_WQ["DateTime"], any( ceiling_date(DateTime, unit = "hours") %in% ceiling_date(B1_stage$DateTime, unit = "hours"))) %>% pull(),
                           method = "linear", rule = 2 ) %>% 
   tbl_df() %>%
   #drop entries that are on the hour or the 30.
@@ -104,8 +96,7 @@ B1_stage_QA <- B1_stage %>%
 ```
 
 
-
-#Bridge 1 discharge calculated and added to WQ sheet
+#Bridge 1 WQ, stage, and discharge merged into one sheet. Overall QAQC for Bridge 1
 ```{r}
 
 stageToDischarge <- function( a ) {
@@ -118,12 +109,46 @@ stageToDischarge <- function( a ) {
 }
 
 
+#calculate and add discharge to stage sheet
 B1_stage_QA$Discharge <- sapply( B1_stage_QA$Lvl_m, stageToDischarge)
 
 
+#cut WQ data down to just those rows for which we have stage and discharge data
+#(It shouldn't drop too much -- just 15,000 or so rows out of ~230,000.)
+B1_WQ <- B1_WQ[ B1_WQ$DateTime %in% B1_stage_QA$DateTime, ]
 
-B1_QA <- B1_QA[ B1_QA$DateTime %in% B1_stage_QA$DateTime, ]
-B1_QA$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_QA$DateTime]
+
+#Add discharge and stage, along with stage flags, to the main sheet. Entries are matched by DateTime
+B1_WQ$Lvl_m <- B1_stage_QA$Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+B1_WQ$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+B1_WQ$Flag_Lvl_m <- B1_stage_QA$Flag_Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+
+
+
+#switching the location of discharge and the the first flag column might be nice.
+#Do that here?
+
+
+
+#Flag values if they're too high or low, or if it seems like the Stroubles wasn't high enough to cover the sensor on the sonde.
+B1_QA <- B1_WQ %>%
+  mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
+         Flag_SpCond_uScm = ifelse(SpCond_uScm < 50 | SpCond_uScm > 1500 | Lvl_m < 0.25 , 1, 0),
+         Flag_pH = ifelse(pH <6 | pH >9 | Lvl_m <0.2, 1, 0),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 1000 | Lvl_m < 0.16 , 1, 0), #Timpano et al. 2010
+         Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
+         Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
+         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
+
+
+B1_QA <- B1_QA %>%
+  filter(Flag_Temp_degC == 0,
+         Flag_SpCond_uScm == 0,
+         Flag_pH == 0,
+         Flag_Turb_NTU == 0,
+         Flag_DO_pct == 0,
+         Flag_DO_mgL == 0,
+         Flag_Batt_V == 0)
 ```
 
 
