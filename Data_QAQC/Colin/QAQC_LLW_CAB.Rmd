@@ -1,5 +1,5 @@
 ---
-title: "QAQC_LLW_CAB_UpdSht_Stage"
+title: "QAQC_LLW_CAB"
 author: "Wind & Baciocco"
 date: "5/1/2019"
 output: html_document
@@ -96,6 +96,7 @@ B1_stage_QA <- B1_stage %>%
 ```
 
 
+
 #Bridge 1 WQ, stage, and discharge merged into one sheet. Overall QAQC for Bridge 1
 ```{r}
 
@@ -130,25 +131,36 @@ B1_WQ$Flag_Lvl_m <- B1_stage_QA$Flag_Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateT
 
 
 
-#Flag values if they're too high or low, or if it seems like the Stroubles wasn't high enough to cover the sensor on the sonde.
+#Flag values if they're too high or low. 1 == flagged, 0 == not-flagged
 B1_QA <- B1_WQ %>%
   mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
          Flag_SpCond_uScm = ifelse(SpCond_uScm < 50 | SpCond_uScm > 1500 | Lvl_m < 0.25 , 1, 0),
          Flag_pH = ifelse(pH <6 | pH >9 | Lvl_m <0.2, 1, 0),
-         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 1000 | Lvl_m < 0.16 , 1, 0), #Timpano et al. 2010
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 2000 | Lvl_m < 0.16 , 1, 0), #Timpano et al. 2010
          Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
+         #Play around with flagging DO if 0 or something else
          Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
-         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
+         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0)) %>%
+#Flag values  if it seems like the Stroubles wasn't high enough to cover the sensor on the sonde.
+  mutate(Flag_SpCond_uScm = ifelse( Lvl_m < 0.25 , 2, Flag_SpCond_uScm),
+         Flag_pH = ifelse( Lvl_m <0.2, 2, Flag_pH),
+         Flag_Turb_NTU = ifelse( Lvl_m < 0.16 , 2, Flag_Turb_NTU))
+         #For turb, see Timpano et al. 2010
+  
 
-
+#Drop rows that with values that are flagged by the value themselves
 B1_QA <- B1_QA %>%
-  filter(Flag_Temp_degC == 0,
-         Flag_SpCond_uScm == 0,
-         Flag_pH == 0,
-         Flag_Turb_NTU == 0,
-         Flag_DO_pct == 0,
-         Flag_DO_mgL == 0,
-         Flag_Batt_V == 0)
+  filter(Flag_Temp_degC != 1,
+         Flag_SpCond_uScm != 1,
+         Flag_pH != 1,
+         Flag_Turb_NTU != 1,
+         Flag_DO_pct != 1,
+         Flag_DO_mgL != 1,
+         Flag_Batt_V != 1) %>%
+#Drop values that are flagged by height, but don't drop their row
+  mutate(SpCond_uScm = ifelse( Flag_SpCond_uScm == 2, NaN, SpCond_uScm),
+         pH = ifelse( Flag_pH == 2, NaN, pH),
+         Turb_NTU = ifelse( Flag_pH == 2, NaN, Turb_NTU))
 ```
 
 
@@ -160,7 +172,7 @@ stage1 <- ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_
   theme_bw()
 
 stage1
-```
+
 
 ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
   geom_point()+
@@ -179,4 +191,4 @@ ggplot(data = B2_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
 plot1 <- ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
   geom_point()+
   theme_bw()
-
+```
