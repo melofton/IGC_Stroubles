@@ -12,9 +12,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #load packages
 ```{r}
-install.packages("pacman")
+library(pacman)
 pacman::p_load(tidyverse, lubridate)
 ```
+
 
 #read in Bridge WQ 1 data
 ```{r}
@@ -120,9 +121,13 @@ B1_WQ <- B1_WQ[ B1_WQ$DateTime %in% B1_stage_QA$DateTime, ]
 
 
 #Add discharge and stage, along with stage flags, to the main sheet. Entries are matched by DateTime
-B1_WQ$Lvl_m <- B1_stage_QA$Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
-B1_WQ$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
-B1_WQ$Flag_Lvl_m <- B1_stage_QA$Flag_Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+B1_WQ <- B1_WQ %>% mutate( Lvl_m = B1_stage_QA[ B1_stage_QA$DateTime %in% B1_WQ$DateTime, ][["Lvl_m"]],
+                           Discharge = B1_stage_QA[ B1_stage_QA$DateTime %in% B1_WQ$DateTime, ][["Discharge"]],
+                           Flag_Lvl_m = B1_stage_QA[ B1_stage_QA$DateTime %in% B1_WQ$DateTime, ][["Flag_Lvl_m"]])
+#Old way to do method in "mutate" is below
+# B1_WQ$Lvl_m <- B1_stage_QA$Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+# B1_WQ$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+# B1_WQ$Flag_Lvl_m <- B1_stage_QA$Flag_Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
 
 
 
@@ -161,34 +166,11 @@ B1_QA <- B1_QA %>%
   mutate(SpCond_uScm = ifelse( Flag_SpCond_uScm == 2, NaN, SpCond_uScm),
          pH = ifelse( Flag_pH == 2, NaN, pH),
          Turb_NTU = ifelse( Flag_pH == 2, NaN, Turb_NTU))
+
 ```
 
 
-#ploting da stage data
+#Save the merged, quality-assured file
 ```{r}
-#Bridge 1
-stage1 <- ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
-  geom_point()+
-  theme_bw()
-
-stage1
-
-
-ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
-  geom_point()+
-  theme_bw()
-
-s2 <- subset(B1_stage_QA,year(B1_stage$DateTime) == 2018)
-
-ggplot(data = s2, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
-  geom_point()+
-  theme_bw()
-
-ggplot(data = B2_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
-  geom_point()+
-  theme_bw()
-  
-plot1 <- ggplot(data = B1_stage_QA, aes(x = DateTime, y = Lvl_m, colour = Flag_Lvl_m))+
-  geom_point()+
-  theme_bw()
+write_csv(B1_QA, "B1_QA.csv", append = TRUE)
 ```
