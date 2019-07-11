@@ -1,0 +1,194 @@
+---
+title: "ggplot2 Experiments"
+author: "Colin"
+date: "7/4/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+
+#read in B1_QA data
+```{r Data Read-In}
+
+
+
+B1_QA <- read_csv("./Data_QAQC/Colin/B1_QA.csv") %>%
+  mutate( DateTime = parse_date_time(DateTime, "ymd H M S"),
+        #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
+        Flag_NinetyQDischarge = ifelse( Discharge > quantile( Discharge, .9, names = FALSE), 1, 0 ) ) %>%
+  group_by( Year = year(DateTime), Month = month(DateTime) )
+
+
+BrynnDates <- read_csv( "./Visualize/Colin/Brynn_Dates.csv", col_names = FALSE )[[1]] %>%
+  mdy()
+  
+```
+
+
+```{r play around with graphing summaries for discharge }
+#see the groupings for B1_QA. These are set above
+
+#Compute Maximum and Minimum Discharge
+Month_MaxMin_Dis <- summarize( B1_QA, MaxDischarge = max(Discharge), MinDischarge = min(Discharge), ) %>% 
+  mutate( MonthName = month.name[Month] ) 
+
+
+#reorder the columns so MonthNames isn't last
+#A way to improve this would be to refer to the columns by name instead of original place
+Month_MaxMin_Dis <- Month_MaxMin_Dis[ , c(1, 5, 2, 3, 4)]
+Month_MaxMin_Dis
+
+
+MaxDischarge.Plot <- ggplot( Month_MaxMin_Dis, aes( x = Year + Month/12, y = MaxDischarge, color = Month) ) + geom_point() + geom_path() + labs( title = "Maximum Discharge by Month") +
+  annotate( "point", x = min(B1_QA$Year + B1_QA$Month/12 - .5), y = quantile(B1_QA$Discharge, 0.9, names = FALSE), ) +
+  annotate( "text", x = min(B1_QA$Year + B1_QA$Month/12 - .5), y = quantile(B1_QA$Discharge, 0.9, names = FALSE), label = "90th Quantile")
+
+last_plot()
+
+
+MinDischarge.Plot <- ggplot( Month_MaxMin_Dis, aes( x = Year + Month/12, y = MinDischarge, color = Month) ) + geom_point() + geom_path() + labs( title = "Minimum Discharge by Month")
+
+last_plot()
+
+
+MaxMinDischarge.Plot <- ggplot( Month_MaxMin_Dis ) +
+  geom_point(mapping = aes( x = Year + Month/12, y = MaxDischarge, color = Month)) +
+  geom_path(mapping = aes( x = Year + Month/12, y = MaxDischarge, color = Month)) +
+  geom_point(mapping = aes( x = Year + Month/12, y = MinDischarge, color = Month)) +
+  geom_path(mapping = aes( x = Year + Month/12, y = MinDischarge, color = Month)) +
+  
+
+last_plot()
+
+```
+
+```{r stephen hysteresis plots}
+BrynnDates
+
+June02.13 <- subset(B1_QA, DateTime > "2013-03-31 0:00:00" & DateTime < "2013-04-01 23:45:00" )
+
+ggplot(June02.13, aes(x=Discharge, y=SpCond_uScm) ) +
+  geom_point( color = "red" )+
+  geom_path( color = "blue4" )
+
+ggsave( paste( "./Discharge Plots/", "2013-03-31 to 04-01",".pdf", sep = "" ),
+              width = 10, height = 6 )
+
+```
+
+
+
+```{r graph every discharge point}
+
+#Look at patterns of discharge to identify storms and rainy seasons
+graph1 <- ggplot(data = B1_QA, aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge)) + geom_point() + geom_path()
+
+graph1
+
+
+```
+
+
+
+```{r graph discharge by year}
+
+
+years <- year(B1_QA[[1,"DateTime"]]):year(B1_QA[[nrow(B1_QA),"DateTime"]])
+
+
+for( vars in years ){
+
+  print( ggplot( filter( B1_QA,
+                  year(DateTime) == vars ),
+          aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge) ) +
+    geom_point() + 
+    geom_line() +
+    labs( title = paste( vars, "Discharge") )
+    )
+  
+  
+
+}
+
+
+
+```
+
+
+
+```{r graph discharge by month within each year. Make LOTS of graphs...}
+timestart_graphingbymonthyear <- Sys.time()
+
+
+for( y_vars in years ){
+
+  y_data <- filter( B1_QA, year(DateTime) == y_vars )
+  months <- month(y_data[[1,"DateTime"]]):month(y_data[[nrow(y_data),"DateTime"]])
+  
+  #visually check to be sure we have data from each month in the year
+  print( paste( y_vars, month.name[months] ) )
+  
+  
+  
+  for( m_vars in months ){
+      m_data <- filter( y_data, month(DateTime) == m_vars )
+    
+      ggplot( m_data,
+              aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge) ) +
+            geom_point() +
+            geom_line() +
+            coord_cartesian( ylim = c(0, 18),
+                             #xlim = c( m_data$DateTime[1], m_data$DateTime[length(m_data)])
+                             ) +
+            labs( title = paste( y_vars, month.name[m_vars], "Discharge") )
+    
+      ggsave( paste( "./Discharge Plots/", y_vars, " ", month.name[m_vars],  ".png", sep = "" ),
+              width = 15, height = 8 )
+    
+  }
+}
+
+print( paste( "Graphing completed in:", Sys.time() - timestart_graphingbymonthyear, "minutes" ) )
+rm( months, years y_vars, m_vars, y_data, m_data, timestart_graphingbymonthyear )
+
+```
+
+
+```{r graph turbidity for Izzy by month within each year}
+timestart_graphingbymonthyear <- Sys.time()
+
+
+for( y_vars in years ){
+
+  y_data <- filter( B1_QA, year(DateTime) == y_vars )
+  months <- month(y_data[[1,"DateTime"]]):month(y_data[[nrow(y_data),"DateTime"]])
+  
+  #visually check to be sure we have data from each month in the year
+  print( paste( y_vars, month.name[months] ) )
+  
+  
+  for( m_vars in months ){
+      m_data <- filter( y_data, month(DateTime) == m_vars )
+    
+      ggplot( m_data,
+              aes(x = DateTime, y = Turb_NTU, color = Flag_Turb_NTU) ) +
+            geom_point() +
+            geom_line() +
+            coord_cartesian( ylim = c(0, 2000 ) ) +
+            labs( title = paste( y_vars, month.name[m_vars], "Turbidity") )
+    
+       ggsave( paste( "./Turbidity Plots/", y_vars, " ", month.name[m_vars],  ".png", sep = "" ),
+              width = 13, height = 8 )
+    
+  }
+}
+
+print( paste( "Graphing completed in:", Sys.time() - timestart_graphingbymonthyear, "minutes" ) )
+rm( months, years, y_vars, m_vars, y_data, m_data, timestart_graphingbymonthyear )
+
+```

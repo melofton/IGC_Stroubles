@@ -47,7 +47,7 @@ B1_WQ <- read_csv("../6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
 
 
 #Read-in, interp, and QAQC for Bridge 1 stage
-```{r}
+```{r echo=FALSE}
 
 B1_stage <- read_csv("../6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
@@ -80,7 +80,7 @@ B1_intrp_stage <- approx( x = B1_stage$DateTime, y = B1_stage$Lvl_m,
   tbl_df() %>%
   #drop entries that are on the hour or the 30.
   filter( minute(x) == 15 | minute(x) == 45 )
-  #rename columns
+  #rename columns, no pipe operator needed
   colnames(B1_intrp_stage) <- c("DateTime", "Lvl_m")
 
 
@@ -124,7 +124,8 @@ B1_WQ <- B1_WQ[ B1_WQ$DateTime %in% B1_stage_QA$DateTime, ]
 B1_WQ <- B1_WQ %>% mutate( Lvl_m = B1_stage_QA[ B1_stage_QA$DateTime %in% B1_WQ$DateTime, ][["Lvl_m"]],
                            Discharge = B1_stage_QA[ B1_stage_QA$DateTime %in% B1_WQ$DateTime, ][["Discharge"]],
                            Flag_Lvl_m = B1_stage_QA[ B1_stage_QA$DateTime %in% B1_WQ$DateTime, ][["Flag_Lvl_m"]])
-#Old way to do method in "mutate" is below
+
+#Old way to do method in "mutate" is below. They do the same thing -- just experimenting here
 # B1_WQ$Lvl_m <- B1_stage_QA$Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
 # B1_WQ$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
 # B1_WQ$Flag_Lvl_m <- B1_stage_QA$Flag_Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
@@ -143,7 +144,7 @@ B1_QA <- B1_WQ %>%
          Flag_pH = ifelse(pH <6 | pH >9 | Lvl_m <0.2, 1, 0),
          Flag_Turb_NTU = ifelse(Turb_NTU < 0 | Turb_NTU > 2000 | Lvl_m < 0.16 , 1, 0), #Timpano et al. 2010
          Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
-         #Play around with flagging DO if 0 or something else
+         #Perhaps play around with flagging DO if 0 or something else?
          Flag_DO_mgL = ifelse(DO_mgL < 4 | DO_mgL > 18, 1, 0),
          Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0)) %>%
 #Flag values  if it seems like the Stroubles wasn't high enough to cover the sensor on the sonde.
@@ -170,7 +171,8 @@ B1_QA <- B1_QA %>%
 ```
 
 
-#Save the merged, quality-assured file
+#Save the merged, quality-assured file in the "Colin" QAQC Directory
 ```{r}
-write_csv(B1_QA, "B1_QA.csv", append = TRUE)
+#The QAQC-ed sheet may be shorter than original stage and water quality sheets, but again -- that's because we drop rows with even a single "suspect" value (flagged based on sensor value), per Colin's instructions from the IGC group.
+write_csv(B1_QA, "B1_QA.csv")
 ```
