@@ -1,0 +1,100 @@
+---
+title: "Class Experiment"
+author: "Colin"
+date: "7/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+
+#This document refers to Bridge 1 WQ data with B1, not B1_QA!
+
+```{r Read in Bridge 1 data and add a flagging column for high discharge "storm" values}
+
+B1_QA <- read_csv("../Data_QAQC/Colin/B1_QA.csv")
+  
+  
+B1 <- mutate( B1_QA, DateTime = parse_date_time(DateTime, "ymd H M S"),
+        #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
+        Flag_High_Discharge = ifelse( Discharge > quantile(B1_QA$Discharge, 0.9, names = FALSE), 1, 0) ) %>%
+  group_by( Year = year(DateTime), Month = month(DateTime) )
+```
+
+
+
+```{r cyclically break B1_QA into a set of tibbles by "storm"}
+#Each tibble will contain one "storm" -- i.e., all of the data where discharge is continuously above the 90th percentile discharge value will be combined into one storm.
+
+#Needs:
+#a list of storm objects. Set up the storm "placeholder"
+storms <- list()
+storm <- list()
+#variable to track which row we're on
+#variable to track the DateTime of the last "storm" row. Doesn't need to be set to anything specific -- just needs to be instantiated before loop begins.
+last_stormr_datetime <- as.POSIXct(0, origin = "1970-01-01", tz = Sys.timezone())
+
+
+#overall loop to cycle through each row in dataset
+while( n_current_row <= nrow(B1) ){
+
+
+
+    
+  #Work through a storm period, creating one or more storm objects and saving them in a list of storms.
+  #Storm events are separated by either discharge dropping below the "high discharge" value or by it being over an hour since the last row of storm data
+  #Each storm in that list is named by its start time
+  while( B1$Flag_High_Discharge[n_current_row] == 1 ){
+    #If the last "storm" row was more than an hour ago, create a new storm object. 
+    #Otherwise, add to the current one.
+    if( ( B1$DateTime[n_current_row] %>% as.numeric() - last_stormr_datetime %>% as.numeric() ) >= 3600 ){
+      #Before we create a new storm object, we should save the last one -- unless there is no last one to save
+      storms <- list( unlist(storms), paste(start) = storm )
+      #create a new storm object. Inside it, record the first WQ row and the storm's start time
+      storm <- list( WQ = B1[ n_current_row, ], start = B1$DateTime[n_current_row] )
+    } else{
+      storm$WQ <- storm$WQ %>% merge( B1[ n_current_row, ], by = DateTime )
+    }
+    
+    last_stormr_datetime <- B1$DateTime[n_current_row]
+    n_current_row %>% + 1
+  }
+  #add the last storm
+  
+  
+  # How do I auto-generate names for each of the storm variables, as in the (non-functional)
+  #paste("a") <- list( "storm 1" = B1, "storm 2" = B1_QA)?
+  #assign() will do it, apparently
+  
+  n_current_row %>% + 1
+}
+
+rm( last_stormr_datetime, n_current_row, storm )
+```
+
+```{r while experiment}
+
+a <- 1
+
+while( a == 0){
+  print( "while executed")
+}
+
+rm(a)
+```
+
+
+```{r en-masse method for breaking B1_QA into a set of tibbles}
+
+storm_rows <- filter(B1, Flag_High_Discharge == 1)
+
+
+#find the DateTime difference between a row and the preceeding row
+
+
+
+```

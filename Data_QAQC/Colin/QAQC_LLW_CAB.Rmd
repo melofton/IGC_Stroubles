@@ -170,7 +170,7 @@ B1_QA <- B1_QA %>%
 ```
 
 
-#Save the merged, quality-assured file
+#Save the merged, quality-assured file in the "Colin" QAQC Directory
 ```{r}
 write_csv(B1_QA, "B1_QA.csv", append = TRUE)
 ```
