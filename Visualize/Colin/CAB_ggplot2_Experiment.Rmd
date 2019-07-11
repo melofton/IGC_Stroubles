@@ -15,8 +15,6 @@ library(lubridate)
 #read in B1_QA data
 ```{r Data Read-In}
 
-
-
 B1_QA <- read_csv("./Data_QAQC/Colin/B1_QA.csv") %>%
   mutate( DateTime = parse_date_time(DateTime, "ymd H M S"),
         #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
@@ -60,7 +58,7 @@ MaxMinDischarge.Plot <- ggplot( Month_MaxMin_Dis ) +
   geom_point(mapping = aes( x = Year + Month/12, y = MaxDischarge, color = Month)) +
   geom_path(mapping = aes( x = Year + Month/12, y = MaxDischarge, color = Month)) +
   geom_point(mapping = aes( x = Year + Month/12, y = MinDischarge, color = Month)) +
-  geom_path(mapping = aes( x = Year + Month/12, y = MinDischarge, color = Month)) +
+  geom_path(mapping = aes( x = Year + Month/12, y = MinDischarge, color = Month))
   
 
 last_plot()
