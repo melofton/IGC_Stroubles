@@ -3,18 +3,25 @@ title: "StreamLab_QAQC"
 author: "Mary Lofton & Lauren Wind"
 date: "April 16, 2019"
 output: html_document
+
+
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-#load packages
 ```{r}
 #clear environment
 rm(list=ls())
+```
+
+
+#load packages
+```{r}
+
 #install.packages("pacman")
-pacman::p_load(tidyverse, lubridate)
+pacman::p_load(tidyverse, lubridate, data.table, ggplot2)
 
 ```
 
@@ -24,7 +31,7 @@ B1_WQ <- read_csv("./Bridge 1_WQ.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
-  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M", origin ="1582-10-14", tz=Sys.timezone()),
          Time = X2,
          meridiemoffset = ifelse(X3 == "AM",0,12),
          Record_number = as.double(RECORD),
@@ -60,7 +67,7 @@ B2_WQ <- read_csv("./Bridge 2_WQ.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
-  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M", origin ="1582-10-14",  tz=Sys.timezone()),
          Time = X2,
          meridiemoffset = ifelse(X3 == "AM",0,12),
          Record_number = as.double(RECORD),
@@ -93,7 +100,7 @@ B1_stage <- read_csv("./Bridge 1_Stage.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
-  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M", origin ="1582-10-14", tz=Sys.timezone()),
          Time = X2,
          meridiemoffset = ifelse(X3 == "AM",0,12),
          Record_number = as.double(RECORD),
@@ -116,7 +123,7 @@ B2_stage <- read_csv("./Bridge 2_Stage.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
-  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+  mutate(Date = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M", origin ="1582-10-14", tz=Sys.timezone()),
          Time = X2,
          meridiemoffset = ifelse(X3 == "AM",0,12),
          Record_number = as.double(RECORD),
@@ -187,8 +194,16 @@ ggplot(subset(B2_QA,Flag_SpCond_uScm %in% "0")) +
   ylab(expression(Specific~Conductivity~(mu*S~cm^{-1})))+
   xlab("Year")
   
+B1_QA$Date <- format(as.POSIXct(B1_QA$DateTime,format='%m/%d/%Y %H:%M:%S'),format='%m/%d/%Y')
+B1_stage_QA$Date <- format(as.POSIXct(B1_stage_QA$DateTime, format='%m/%d/%Y %H:%M:%S'),format='%m/%d/%Y')
+
+
+
+
   
 ```
+
+
 
 ```{r}
 library(grid)
@@ -201,4 +216,930 @@ dev.off()
 tiff("./B2_cond.tiff", units="in", width=7, height=4, res=300)
 grid.arrange(B2_Cond_QC)
 dev.off()
+```
+
+
+Calculate Discharge - Merge with WQ Data
+```{r}
+library(chron)
+
+B1_stage_QA$Discharge <- ifelse(B1_stage_QA$Lvl_m < 0.7, (4.8292*B1_stage_QA$Lvl_m)^1.9887, 13.559*B1_stage_QA$Lvl_m - 7.0948)
+B1 <- merge(B1_stage_QA, B1_QA, by = "DateTime")
+B1$Year <- format(B1[,"DateTime"], "%Y")
+
+```
+
+Plot Storm Event Hysteresis
+
+Isolated Storm Dates
+
+2013-03-12
+2013-03-31
+2013-05-23
+2013-06-02
+2015-02-02
+2015-05-17
+2015-09-03
+2016-04-01
+2016-04-07
+2016-04-22
+2016-08-21
+2017-02-09
+2017-08-21
+2017-09-06
+2017-10-16
+
+```{r}
+library(gridExtra)
+library(ggplot2)
+library(scales)
+
+##3/12/2013##
+Mar12.13 <- subset(B1, Date.x == "03/12/2013")
+Mar12.13.Q <- ggplot(Mar12.13, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Mar12.13.Turb <- ggplot(Mar12.13, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Mar12.13.Cond.Hist <- ggplot(Mar12.13, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Mar12.13.Cond <-ggplot(Mar12.13, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Mar12.13.Turb.Hist <- ggplot(Mar12.13, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Mar12.13.1 <- arrangeGrob(Mar12.13.Q, Mar12.13.Turb, Mar12.13.Cond, nrow = 1)
+Mar12.13.2 <- arrangeGrob(Mar12.13.Turb.Hist, Mar12.13.Cond.Hist, nrow=1)
+Mar12.13.3 <- grid.arrange(Mar12.13.1, Mar12.13.2, nrow = 2)
+
+##3/31/2013##
+Mar31.13 <- subset(B1, Date.x == "03/31/2013")
+Mar31.13.Q <- ggplot(Mar31.13, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Mar31.13.Turb <- ggplot(Mar31.13, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Mar31.13.Cond.Hist <- ggplot(Mar31.13, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Mar31.13.Cond <-ggplot(Mar31.13, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Mar31.13.Turb.Hist <- ggplot(Mar31.13, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Mar31.13.1 <- arrangeGrob(Mar31.13.Q, Mar31.13.Turb, Mar31.13.Cond, nrow = 1)
+Mar31.13.2 <- arrangeGrob(Mar31.13.Turb.Hist, Mar31.13.Cond.Hist, nrow=1)
+Mar31.13.3 <- grid.arrange(Mar31.13.1, Mar31.13.2, nrow = 2)
+
+##5/23/2013##
+May23.13 <- subset(B1, Date.x == "05/23/2013")
+May23.13.Q <- ggplot(May23.13, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+May23.13.Turb <- ggplot(May23.13, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+May23.13.Cond.Hist <- ggplot(May23.13, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+May23.13.Cond <-ggplot(May23.13, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+May23.13.Turb.Hist <- ggplot(May23.13, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+May23.13.1 <- arrangeGrob(May23.13.Q, May23.13.Turb, May23.13.Cond, nrow = 1)
+May23.13.2 <- arrangeGrob(May23.13.Turb.Hist, May23.13.Cond.Hist, nrow=1)
+May23.13.3 <- grid.arrange(May23.13.1, May23.13.2, nrow = 2)
+
+##6/2/2013##
+June2.13 <- subset(B1, Date.x == "06/02/2013")
+June2.13.Q <- ggplot(June2.13, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+June2.13.Turb <- ggplot(June2.13, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+June2.13.Cond.Hist <- ggplot(June2.13, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+June2.13.Cond <-ggplot(June2.13, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+June2.13.Turb.Hist <- ggplot(June2.13, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+June2.13.1 <- arrangeGrob(June2.13.Q, June2.13.Turb, June2.13.Cond, nrow = 1)
+June2.13.2 <- arrangeGrob(June2.13.Turb.Hist, June2.13.Cond.Hist, nrow=1)
+June2.13.3 <- grid.arrange(June2.13.1, June2.13.2, nrow = 2)
+
+##2/2/2015##
+Feb2.15 <- subset(B1, Date.x == "02/02/2015")
+Feb2.15.Q <- ggplot(Feb2.15, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Feb2.15.Turb <- ggplot(Feb2.15, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Feb2.15.Cond.Hist <- ggplot(Feb2.15, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Feb2.15.Cond <-ggplot(Feb2.15, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Feb2.15.Turb.Hist <- ggplot(Feb2.15, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Feb2.15.1 <- arrangeGrob(Feb2.15.Q, Feb2.15.Turb, Feb2.15.Cond, nrow = 1)
+Feb2.15.2 <- arrangeGrob(Feb2.15.Turb.Hist, Feb2.15.Cond.Hist, nrow=1)
+Feb2.15.3 <- grid.arrange(Feb2.15.1, Feb2.15.2, nrow = 2)
+
+##5/17/2015##
+May17.15 <- subset(B1, Date.x == "05/17/2015")
+May17.15.Q <- ggplot(May17.15, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+May17.15.Turb <- ggplot(May17.15, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+May17.15.Cond.Hist <- ggplot(May17.15, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+May17.15.Cond <-ggplot(May17.15, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+May17.15.Turb.Hist <- ggplot(May17.15, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+May17.15.1 <- arrangeGrob(May17.15.Q, May17.15.Turb, May17.15.Cond, nrow = 1)
+May17.15.2 <- arrangeGrob(May17.15.Turb.Hist, May17.15.Cond.Hist, nrow=1)
+May17.15.3 <- grid.arrange(May17.15.1, May17.15.2, nrow = 2)
+
+##9/3/2015##
+Sept3.15 <- subset(B1, Date.x == "09/03/2015")
+Sept3.15.Q <- ggplot(Sept3.15, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Sept3.15.Turb <- ggplot(Sept3.15, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Sept3.15.Cond.Hist <- ggplot(Sept3.15, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Sept3.15.Cond <-ggplot(Sept3.15, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Sept3.15.Turb.Hist <- ggplot(Sept3.15, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Sept3.15.1 <- arrangeGrob(Sept3.15.Q, Sept3.15.Turb, Sept3.15.Cond, nrow = 1)
+Sept3.15.2 <- arrangeGrob(Sept3.15.Turb.Hist, Sept3.15.Cond.Hist, nrow=1)
+Sept3.15.3 <- grid.arrange(Sept3.15.1, Sept3.15.2, nrow = 2)
+
+##4/1/2016##
+Apr1.16 <- subset(B1, Date.x == "04/01/2016")
+Apr1.16.Q <- ggplot(Apr1.16, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr1.16.Turb <- ggplot(Apr1.16, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr1.16.Cond.Hist <- ggplot(Apr1.16, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Apr1.16.Cond <-ggplot(Apr1.16, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr1.16.Turb.Hist <- ggplot(Apr1.16, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Apr1.16.1 <- arrangeGrob(Apr1.16.Q, Apr1.16.Turb, Apr1.16.Cond, nrow = 1)
+Apr1.16.2 <- arrangeGrob(Apr1.16.Turb.Hist, Apr1.16.Cond.Hist, nrow=1)
+Apr1.16.3 <- grid.arrange(Apr1.16.1, Apr1.16.2, nrow = 2)
+
+##4/7/2016##
+Apr7.16 <- subset(B1, Date.x == "04/07/2016")
+Apr7.16.Q <- ggplot(Apr7.16, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr7.16.Turb <- ggplot(Apr7.16, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr7.16.Cond.Hist <- ggplot(Apr7.16, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Apr7.16.Cond <-ggplot(Apr7.16, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr7.16.Turb.Hist <- ggplot(Apr7.16, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Apr7.16.1 <- arrangeGrob(Apr7.16.Q, Apr7.16.Turb, Apr7.16.Cond, nrow = 1)
+Apr7.16.2 <- arrangeGrob(Apr7.16.Turb.Hist, Apr7.16.Cond.Hist, nrow=1)
+Apr7.16.3 <- grid.arrange(Apr7.16.1, Apr7.16.2, nrow = 2)
+
+##4/22/2016##
+Apr22.16 <- subset(B1, Date.x == "04/22/2016")
+Apr22.16.Q <- ggplot(Apr22.16, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr22.16.Turb <- ggplot(Apr22.16, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr22.16.Cond.Hist <- ggplot(Apr22.16, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Apr22.16.Cond <-ggplot(Apr22.16, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Apr22.16.Turb.Hist <- ggplot(Apr22.16, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Apr22.16.1 <- arrangeGrob(Apr22.16.Q, Apr22.16.Turb, Apr22.16.Cond, nrow = 1)
+Apr22.16.2 <- arrangeGrob(Apr22.16.Turb.Hist, Apr22.16.Cond.Hist, nrow=1)
+Apr22.16.3 <- grid.arrange(Apr22.16.1, Apr22.16.2, nrow = 2)
+
+##8/21/2016##
+Aug21.16 <- subset(B1, Date.x == "08/21/2016")
+Aug21.16.Q <- ggplot(Aug21.16, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Aug21.16.Turb <- ggplot(Aug21.16, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Aug21.16.Cond.Hist <- ggplot(Aug21.16, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Aug21.16.Cond <-ggplot(Aug21.16, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Aug21.16.Turb.Hist <- ggplot(Aug21.16, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Aug21.16.1 <- arrangeGrob(Aug21.16.Q, Aug21.16.Turb, Aug21.16.Cond, nrow = 1)
+Aug21.16.2 <- arrangeGrob(Aug21.16.Turb.Hist, Aug21.16.Cond.Hist, nrow=1)
+Aug21.16.3 <- grid.arrange(Aug21.16.1, Aug21.16.2, nrow = 2)
+
+##2/09/2017##
+Feb9.17 <- subset(B1, Date.x == "02/09/2017")
+Feb9.17.Q <- ggplot(Feb9.17, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Feb9.17.Turb <- ggplot(Feb9.17, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Feb9.17.Cond.Hist <- ggplot(Feb9.17, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Feb9.17.Cond <-ggplot(Feb9.17, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Feb9.17.Turb.Hist <- ggplot(Feb9.17, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Feb9.17.1 <- arrangeGrob(Feb9.17.Q, Feb9.17.Turb, Feb9.17.Cond, nrow = 1)
+Feb9.17.2 <- arrangeGrob(Feb9.17.Turb.Hist, Feb9.17.Cond.Hist, nrow=1)
+Feb9.17.3 <- grid.arrange(Feb9.17.1, Feb9.17.2, nrow = 2)
+
+##8/21/2017##
+Aug21.17 <- subset(B1, DateTime > "2017-08-21 17:00:00" & DateTime < "2017-08-22 11:30:00")
+Aug21.17.Q <- ggplot(Aug21.17, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Aug21.17.Turb <- ggplot(Aug21.17, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Aug21.17.Cond.Hist <- ggplot(Aug21.17, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Aug21.17.Cond <-ggplot(Aug21.17, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Aug21.17.Turb.Hist <- ggplot(Aug21.17, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Aug21.17.1 <- arrangeGrob(Aug21.17.Q, Aug21.17.Turb, Aug21.17.Cond, nrow = 1)
+Aug21.17.2 <- arrangeGrob(Aug21.17.Turb.Hist, Aug21.17.Cond.Hist, nrow=1)
+Aug21.17.3 <- grid.arrange(Aug21.17.1, Aug21.17.2, nrow = 2)
+
+##9/6/2017##
+Sept6.17 <- subset(B1, Date.x == "09/06/2017")
+Sept6.17.Q <- ggplot(Sept6.17, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Sept6.17.Turb <- ggplot(Sept6.17, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Sept6.17.Cond.Hist <- ggplot(Sept6.17, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Sept6.17.Cond <-ggplot(Sept6.17, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Sept6.17.Turb.Hist <- ggplot(Sept6.17, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())
+Sept6.17.1 <- arrangeGrob(Sept6.17.Q, Sept6.17.Turb, Sept6.17.Cond, nrow = 1)
+Sept6.17.2 <- arrangeGrob(Sept6.17.Turb.Hist, Sept6.17.Cond.Hist, nrow=1)
+Sept6.17.3 <- grid.arrange(Sept6.17.1, Sept6.17.2, nrow = 2)
+
+##10/16/2017##
+Oct16.17 <- subset(B1, Date.x == "10/16/2017")
+Oct16.17.Q <- ggplot(Oct16.17, aes(x=DateTime, y=Discharge))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Discharge~(m^{3}~s^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Oct16.17.Turb <- ggplot(Oct16.17, aes(x=DateTime, y=Turb_NTU))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Turbidity~(NTU)))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Oct16.17.Cond.Hist <- ggplot(Oct16.17, aes(x=Discharge, y=SpCond_uScm, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+    scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())+
+  geom_smooth(method = lm, se = FALSE)
+Oct16.17.Cond <-ggplot(Oct16.17, aes(x=DateTime, y=SpCond_uScm))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_line()+
+  ylab(expression(Conductivity~(mu*S~cm^{-1})))+
+  xlab("Time")+
+  scale_x_datetime(labels = date_format("%H:%M"))+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+Oct16.17.Turb.Hist <- ggplot(Oct16.17, aes(x=Discharge, y=Turb_NTU, color = DateTime))+
+  theme_bw()+
+  theme(panel.grid = element_blank())+
+  geom_point()+
+  geom_path()+
+  xlab(expression(Discharge~(m^{3}~s^{-1})))+
+  ylab(expression(Turbidity~(NTU)))+
+  scale_color_gradient("Time", low = "darkorchid4", high = "darkorange1",
+                       trans = time_trans())+
+  geom_smooth(method = lm, se = FALSE)
+Oct16.17.1 <- arrangeGrob(Oct16.17.Q, Oct16.17.Turb, Oct16.17.Cond, nrow = 1)
+Oct16.17.2 <- arrangeGrob(Oct16.17.Turb.Hist, Oct16.17.Cond.Hist, nrow=1)
+Oct16.17.3 <- grid.arrange(Oct16.17.1, Oct16.17.2, nrow = 2)
+
+         
+```
+
+biwavelet analysis
+```{r}
+library(WaveletComp)
+
+sub2 <- subset(B1, Year == "2016")
+
+df2<-aggregate(list(AvgTemp = sub2$Temp_degC),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+df3<-aggregate(list(AvgCond = sub2$SpCond_uScm),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+df4<-aggregate(list(AvgTurb = sub2$Turb_NTU),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+df5<-aggregate(list(AvgpH = sub2$pH),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+df6<-aggregate(list(AvgDOpct = sub2$DO_pct),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+df7<-aggregate(list(AvgDOmgl = sub2$DO_mgL),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+df8<-aggregate(list(Discharge = sub2$Discharge),
+               list(date = cut(sub2$DateTime, "1 day")), 
+               mean)
+dfAverage <- Reduce(function(x, y) merge(x, y, all=TRUE), list(df2, df3, df4, df5, df6,df7,df8))
+dfAverage$date <- as.Date(dfAverage$date,
+                       format = "%Y-%m-%d")
+
+b1.wc <- analyze.coherency(dfAverage, my.pair = c("Discharge", "AvgCond"),
+                                 loess.span = 0.75,
+                                 dt = 1, dj = 1/20,
+                                 make.pval = TRUE, n.sim = 100,
+                                 date.format = "%Y-%m-%d")
+
+b2.wc <- analyze.coherency(dfAverage, my.pair = c("Discharge", "AvgTurb"),
+                                 loess.span = 0.75,
+                                 dt = 1, dj = 1/20,
+                                 make.pval = TRUE, n.sim = 100,
+                                 date.format = "%Y-%m-%d")
+b3.wc <- analyze.coherency(dfAverage, my.pair = c("AvgCond", "AvgTurb"),
+                                 loess.span = 0.75,
+                                 dt = 1, dj = 1/20,
+                                 make.pval = TRUE, n.sim = 100,
+                                 date.format = "%Y-%m-%d")
+```
+
+plot results
+```{r}
+library(gridExtra)
+#Cross-wavelet power spectrum
+dis.cond <- wc.image(b1.wc, 
+         main = "Cross-Wavelet Power Spectrum \n Discharge over Conductivity",
+         legend.params = list(lab = "wavelet power levels (quantiles)", 
+                                     lab.line = 3.5, 
+                                     label.digits = 2),,
+         periodlab = "period (Daily)",
+         color.key = "q",
+  show.date = TRUE)
+
+
+dis.turb <- wc.image(b2.wc, 
+         main = "Cross-Wavelet Power Spectrum \n Discharge over Turbidity",
+         legend.params = list(lab = "wavelet power levels (quantiles)", 
+                                     lab.line = 3.5, 
+                                     label.digits = 2),,
+         periodlab = "period (Daily)",
+         color.key = "q",
+  show.date = TRUE)
+
+cond.turb <- wc.image(b3.wc, 
+         main = "Cross-Wavelet Power Spectrum \n Conductivity over Turbidity",
+         legend.params = list(lab = "wavelet power levels (quantiles)", 
+                                     lab.line = 3.5, 
+                                     label.digits = 2),,
+         periodlab = "period (Daily)",
+         color.key = "q",
+  show.date = TRUE)
+
+
+  
+#Cross-wavelet power averages
+wc.avg(b1.wc, siglvl = 0.01, sigcol = "red", sigpch = 20,
+       periodlab = "period (Daily)")
+
+wc.avg(b2.wc, siglvl = 0.01, sigcol = "red", sigpch = 20,
+       periodlab = "period (Daily)")
+
+wc.avg(b3.wc, siglvl = 0.01, sigcol = "red", sigpch = 20,
+       periodlab = "period (Daily)")
+       
+#Wavelet for each variable
+wt.image(b1.wc, my.series = "AvgCond",
+         legend.params = list(lab = "Wavelet Power Levels"),
+         timelab = "Year", periodlab = "period (Daily)",
+         main = "Specific Conductivity",
+         show.date = TRUE, date.format = "%F %T",
+         label.time.axis = TRUE,
+         spec.time.axis = list(at = NULL))
+
+wt.image(b2.wc, my.series = "AvgTurb",
+         legend.params = list(lab = "Wavelet Power Levels"),
+         timelab = "Year", periodlab = "period (Daily)",
+         main = "Turbidity",
+         show.date = TRUE, date.format = "%F %T",
+         label.time.axis = TRUE,
+         spec.time.axis = list(at = NULL))
+
+wt.image(b1.wc, my.series = "Discharge",
+         legend.params = list(lab = "Wavelet Power Levels"),
+         timelab = "Year", periodlab = "period (Daily)",
+         main = "Discharge",
+         show.date = TRUE, date.format = "%F %T",
+         label.time.axis = TRUE,
+         spec.time.axis = list(at = NULL))
+
 ```
