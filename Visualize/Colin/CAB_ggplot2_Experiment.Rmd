@@ -12,10 +12,10 @@ library(lubridate)
 ```
 
 
-#read in B1_QA data
+#read in finalized B1 sheet
 ```{r Data Read-In}
 
-B1_QA <- read_csv("./Data_QAQC/Colin/B1_QA.csv") %>%
+B1 <- read_csv("./Data_QAQC/Colin/B1.csv") %>%
   mutate( DateTime = parse_date_time(DateTime, "ymd H M S"),
         #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
         Flag_NinetyQDischarge = ifelse( Discharge > quantile( Discharge, .9, names = FALSE), 1, 0 ) ) %>%
@@ -29,10 +29,10 @@ BrynnDates <- read_csv( "./Visualize/Colin/Brynn_Dates.csv", col_names = FALSE )
 
 
 ```{r play around with graphing summaries for discharge }
-#see the groupings for B1_QA. These are set above
+#see the groupings for B1. These are set above
 
 #Compute Maximum and Minimum Discharge
-Month_MaxMin_Dis <- summarize( B1_QA, MaxDischarge = max(Discharge), MinDischarge = min(Discharge), ) %>% 
+Month_MaxMin_Dis <- summarize( B1, MaxDischarge = max(Discharge), MinDischarge = min(Discharge), ) %>% 
   mutate( MonthName = month.name[Month] ) 
 
 
@@ -43,8 +43,8 @@ Month_MaxMin_Dis
 
 
 MaxDischarge.Plot <- ggplot( Month_MaxMin_Dis, aes( x = Year + Month/12, y = MaxDischarge, color = Month) ) + geom_point() + geom_path() + labs( title = "Maximum Discharge by Month") +
-  annotate( "point", x = min(B1_QA$Year + B1_QA$Month/12 - .5), y = quantile(B1_QA$Discharge, 0.9, names = FALSE), ) +
-  annotate( "text", x = min(B1_QA$Year + B1_QA$Month/12 - .5), y = quantile(B1_QA$Discharge, 0.9, names = FALSE), label = "90th Quantile")
+  annotate( "point", x = min(B1$Year + B1$Month/12 - .5), y = quantile(B1$Discharge, 0.9, names = FALSE), ) +
+  annotate( "text", x = min(B1$Year + B1$Month/12 - .5), y = quantile(B1$Discharge, 0.9, names = FALSE), label = "90th Quantile")
 
 last_plot()
 
@@ -68,7 +68,7 @@ last_plot()
 ```{r stephen hysteresis plots}
 BrynnDates
 
-June02.13 <- subset(B1_QA, DateTime > "2013-03-31 0:00:00" & DateTime < "2013-04-01 23:45:00" )
+June02.13 <- subset(B1, DateTime > "2013-03-31 0:00:00" & DateTime < "2013-04-01 23:45:00" )
 
 ggplot(June02.13, aes(x=Discharge, y=SpCond_uScm) ) +
   geom_point( color = "red" )+
@@ -84,7 +84,7 @@ ggsave( paste( "./Discharge Plots/", "2013-03-31 to 04-01",".pdf", sep = "" ),
 ```{r graph every discharge point}
 
 #Look at patterns of discharge to identify storms and rainy seasons
-graph1 <- ggplot(data = B1_QA, aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge)) + geom_point() + geom_path()
+graph1 <- ggplot(data = B1, aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge)) + geom_point() + geom_path()
 
 graph1
 
@@ -96,12 +96,12 @@ graph1
 ```{r graph discharge by year}
 
 
-years <- year(B1_QA[[1,"DateTime"]]):year(B1_QA[[nrow(B1_QA),"DateTime"]])
+years <- year(B1[[1,"DateTime"]]):year(B1[[nrow(B1),"DateTime"]])
 
 
 for( vars in years ){
 
-  print( ggplot( filter( B1_QA,
+  print( ggplot( filter( B1,
                   year(DateTime) == vars ),
           aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge) ) +
     geom_point() + 
@@ -125,7 +125,7 @@ timestart_graphingbymonthyear <- Sys.time()
 
 for( y_vars in years ){
 
-  y_data <- filter( B1_QA, year(DateTime) == y_vars )
+  y_data <- filter( B1, year(DateTime) == y_vars )
   months <- month(y_data[[1,"DateTime"]]):month(y_data[[nrow(y_data),"DateTime"]])
   
   #visually check to be sure we have data from each month in the year
@@ -163,7 +163,7 @@ timestart_graphingbymonthyear <- Sys.time()
 
 for( y_vars in years ){
 
-  y_data <- filter( B1_QA, year(DateTime) == y_vars )
+  y_data <- filter( B1, year(DateTime) == y_vars )
   months <- month(y_data[[1,"DateTime"]]):month(y_data[[nrow(y_data),"DateTime"]])
   
   #visually check to be sure we have data from each month in the year

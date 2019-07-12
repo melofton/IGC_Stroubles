@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #load packages
 ```{r}
-library(pacman)
+#install.packages(pacman)
 pacman::p_load(tidyverse, lubridate)
 ```
 
@@ -98,7 +98,7 @@ B1_stage_QA <- B1_stage %>%
 
 
 
-#Bridge 1 WQ, stage, and discharge merged into one sheet. Overall QAQC for Bridge 1
+#Bridge 1 WQ, stage, and discharge merged into one sheet. Flag and finalize the merged sheet
 ```{r}
 
 stageToDischarge <- function( a ) {
@@ -174,5 +174,5 @@ B1_QA <- B1_QA %>%
 #Save the merged, quality-assured file in the "Colin" QAQC Directory
 ```{r}
 #The QAQC-ed sheet may be shorter than original stage and water quality sheets, but again -- that's because we drop rows with even a single "suspect" value (flagged based on sensor value), per Colin's instructions from the IGC group.
-write_csv(B1_QA, "B1_QA.csv")
+write_csv(B1_QA, "B1.csv")
 ```

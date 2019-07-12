@@ -7,20 +7,18 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
-library(lubridate)
+#install.packages(pacman)
+pacman::p_load( tidyverse, lubridate)
 ```
 
 
 
 ```{r Read in Bridge 1 data and add a flagging column for high discharge "storm" values}
 
-B1_QA <- read_csv("../Data_QAQC/Colin/B1_QA.csv")
-  
-  
-B1 <- mutate( B1_QA, DateTime = parse_date_time(DateTime, "ymd H M S"),
+B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
+  mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
         #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
-        Flag_High_Discharge = ifelse( Discharge > quantile(B1_QA$Discharge, 0.9, names = FALSE), 1, 0) )
+          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.9, names = FALSE), 1, 0) )
 ```
 
 
