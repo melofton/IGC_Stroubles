@@ -1,0 +1,46 @@
+---
+title: "Storm Identifier"
+author: "Mary Lofton and Colin Baciocco"
+date: "7/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+
+
+```{r Read in Bridge 1 data and add a flagging column for high discharge "storm" values}
+
+B1_QA <- read_csv("../Data_QAQC/Colin/B1_QA.csv")
+  
+  
+B1 <- mutate( B1_QA, DateTime = parse_date_time(DateTime, "ymd H M S"),
+        #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
+        Flag_High_Discharge = ifelse( Discharge > quantile(B1_QA$Discharge, 0.9, names = FALSE), 1, 0) )
+```
+
+
+```{r Identify storms by adding a "Storm_ID" column holding each storm's start date.}
+#create a dataset which only holds rows corresponding to "storms" (i.e. rows where discharge is at or above the 90th quantile )
+stormdata <- B1 %>% filter(Flag_High_Discharge == 1)
+
+#create a column to hold the storm identifier values.
+stormdata$Storm_ID <- paste( stormdata$DateTime[1] )
+
+#create a counter for storm ID
+storm_ID <- paste( stormdata$DateTime[1] ) 
+
+#loop through storm dataset and assign identifiers. As the value assigned to each row depends on values in the row before it, the loop starts on the second row. We initially filled the Storm_ID column with storm DateTimes to avoid the first row's storm identifier being blank.
+for(i in 2:nrow(stormdata) ){
+     if( as.numeric(stormdata$DateTime[i]) - as.numeric(stormdata$DateTime[i-1]) >= 3600 ){
+          storm_ID <- paste( stormdata$DateTime[i] )
+          stormdata[i,"Storm_ID"] <- storm_ID
+        } else {
+          stormdata[i,"Storm_ID"] <- storm_ID
+        }
+}
+```
