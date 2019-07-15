@@ -12,7 +12,6 @@ pacman::p_load( tidyverse, lubridate)
 ```
 
 
-
 ```{r Read in Bridge 1 data and add a flagging column for high discharge "storm" values}
 
 B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
@@ -20,6 +19,7 @@ B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
         #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
           Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.9, names = FALSE), 1, 0) )
 ```
+
 
 
 ```{r Identify storms by adding a "Storm_ID" column holding each storm's start date. STORM dataset version}
