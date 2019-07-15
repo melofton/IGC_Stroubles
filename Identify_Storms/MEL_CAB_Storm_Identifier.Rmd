@@ -22,7 +22,7 @@ B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
 ```
 
 
-```{r Identify storms by adding a "Storm_ID" column holding each storm's start date.}
+```{r Identify storms by adding a "Storm_ID" column holding each storm's start date. STORM dataset version}
 #create a dataset which only holds rows corresponding to "storms" (i.e. rows where discharge is at or above the 90th quantile )
 stormdata <- B1 %>% filter(Flag_High_Discharge == 1)
 
@@ -41,4 +41,49 @@ for(i in 2:nrow(stormdata) ){
           stormdata[i,"Storm_ID"] <- storm_ID
         }
 }
+
+rm( i, storm_ID)
+```
+
+
+```{r Identify storms by adding a "Storm_ID" column holding each storm's start date. FULL dataset version}
+#This version identifies a storm both when discharge drops below the 90th percentile, and when it's been over an hour since the last "storm" row. To do this, it works with the full, finalized dataset instead of only the portion including storms. 
+#We identify the same number of storms with this method (I don't think there are all that many events where discharge bottoms out RIGHT below the 90th percentile and then jumps back up over it within the hour), but it's good to be thorough.
+
+
+# #create a dataset which only holds rows corresponding to "storms" (i.e. rows where discharge is at or above the 90th quantile )
+# stormdata <- B1 %>% filter(Flag_High_Discharge == 1)
+
+#create a column to hold the storm identifier values.
+B1$Storm_ID <- NA
+
+#create a counter for storm ID
+storm_ID <- NA
+
+#create a counter for the date of the last "storm" row
+last_stormr <- 0
+
+#loop through storm dataset and assign identifiers. As the value assigned to each row depends on values in the row before it, the loop starts on the second row. This skipping may mean that the dataset starts with a storm the first row may be unidentified, but we manually correct the error with a line of code below.
+for(i in 2:nrow(B1) ){
+  
+  if( B1$Flag_High_Discharge[i] == 1 ){
+     
+    if( as.numeric(B1$DateTime[i]) - as.numeric(last_stormr) >= 3600 ){
+          storm_ID <- paste( B1$DateTime[i] )
+          B1[i,"Storm_ID"] <- storm_ID
+        } else {
+          B1[i,"Storm_ID"] <- storm_ID
+        }
+    last_stormr <- B1$DateTime[i]
+  }
+}
+
+#Correct the ID for the first row, if it's a storm 
+if( B1$Flag_High_Discharge[1] == 1 )
+{
+  B1[ 1, "Storm_ID" ] <- paste( B1$DateTime[1] )
+}
+
+
+rm( i, storm_ID, last_stormr)
 ```
