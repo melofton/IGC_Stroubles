@@ -11,38 +11,80 @@ pacman::p_load( grid, gridExtra )
 ```
 
 #The code below relies on a version of B1 (the finalized sheet) with a column where storms have been identified
+#some of the descriptors for the graphs also rely on the tibble "storm_info." It can be generated using code that's also in the "Identifier+Characterizer" file.
 
-```{r make and save figures with graphs for discharge + hysteresis for each storm}
+```{r make and save figures with graphs of discharge + hysteresis for each storm, echo=FALSE}
 
 #get a unique list of storm starts. Ensure Na is not included.
 stormstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
 
+#init counters
+storm_count <- 0
+storm_month <- 0
+
 loopstart <- Sys.time()
 
-#Loop through each storm, graphing and saving each one.
-for( ID in stormstarts){
+#Loop through each storm, graphing and saving them one-by-one.
+for( ID in stormstarts ){
   
+  graphstart <- Sys.time()
+  
+  #pick out the data we're going to use 
   stormdata <- filter(B1, Storm_ID == ID)
   
+  storm_count <- storm_count + 1
+  
+  #make graphs
   p_discharge <- ggplot( stormdata ) +
     coord_cartesian( ylim = c(0, max(B1$Discharge) ) ) +
-    geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue")
+    geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue") +
+    xlab("")
   
   p_spcond <- ggplot( stormdata ) +
     coord_cartesian( ylim = c(0, max( B1$SpCond_uScm[!is.na(B1$SpCond_uScm)] ) ) ) +
-    geom_path( mapping = aes( x = DateTime, y = SpCond_uScm, color = "brown") )
+    geom_path( mapping = aes( x = DateTime, y = SpCond_uScm, color = "brown") ) +
+    xlab("")
   
   hyst <- ggplot( stormdata, aes(x = Discharge, y = SpCond_uScm, color = DateTime) ) +
     geom_point() +
-    geom_path()
+    geom_path() +
+    xlab("")
   
-  p <- arrangeGrob( arrangeGrob(p_discharge, p_spcond, nrow = 2), hyst, nrow = 2 )
+  #only make a new graph for the discharge over the entire month if it's a new month
+  if( storm_month != month(ID) ){
+    storm_month <- month(ID)
+    month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
+                           mapping = aes( x = DateTime, y = Discharge, color = Flag_High_Discharge )) +
+      geom_path() +
+      ggtitle(paste("Overall", month.name[storm_month],"Discharge"))}
+  
+    
+  #combine the graphs as one grob, or "graphics object", and add some descriptive text at the top
+  p <- arrangeGrob( arrangeGrob( arrangeGrob( textGrob( paste( "Storm ID:", ID ) ),
+                                   textGrob( paste( "Number of Storm Rows:", nrow(stormdata))),
+                                   textGrob( paste( "Volume:", storm_info$Vol_mcubed[storm_count],  "m^3",
+                                                    "      ",
+                                                    "Time Span:", storm_info$length_H[storm_count], "Hours",
+                                                    "      ", 
+                                                    "*Intensity*:", storm_info$Intensity[storm_count],
+                                                    "m^3 / Hr")),
+                                   nrow = 3),
+                                 month_graph,
+                                 nrow = 2),
+                    arrangeGrob(p_discharge, p_spcond, nrow = 2),
+                    hyst,
+                    nrow = 3 )
+  
+  #save the the grob as a picture
   png( paste( "./Storm Plots/", ID, ".png", sep = "" ),
        width = 8, height = 10, units = "in", res = 200)
   grid.draw(p)
+  dev.off()
+  
+  print( Sys.time() - graphstart )
 }
 
-graphics.off()
-print( "Graphing Completed in", Sys.time() - loopstart )
-rm(p_discharge, p_spcond, hyst, p, ID, stormstarts, stormdata)
+
+print( paste( "Graphing Completed in", Sys.time() - loopstart ) )
+rm(p_discharge, p_spcond, hyst, p, ID, stormstarts, stormdata, loopstart, storm_count, graphstart, month_graph, storm_month)
 ```
