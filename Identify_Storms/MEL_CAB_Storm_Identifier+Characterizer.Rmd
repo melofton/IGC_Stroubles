@@ -23,7 +23,7 @@ B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
   mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
         #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
           Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.9, names = FALSE), 1, 0) )
-```
+  ```
 
 
 
@@ -98,8 +98,25 @@ rm( i, storm_ID, last_stormr)
 ```
 
 
-```{r calculate and record volume}
+```{r calculate volume of each storm. Add volume measurement to its own column within each storm.}
+
+#create a new column in B1 to record storm volume
+B1$Storm_Vol <- NA
+
+#get a unique list of storm starts. Ensure Na is not included.
+stormstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
+
+for( ID in stormstarts ){
+  stormdata <- filter( B1, Storm_ID == ID )
+
+  vol <- integrate( splinefun( stormdata$DateTime, stormdata$Discharge ),
+                    stormdata$DateTime[1], stormdata$DateTime[nrow(stormdata)], 
+                    #It may be possible to reduce the number of subdivisions to get this to speed up.
+                    subdivisions = nrow(stormdata) + 10 )
+  
+  B1[ B1$Storm_ID %in% ID, "Storm_Vol" ] <- vol$value
+}
 
 
-
+rm( stormstarts, stormdata, ID, vol)
 ```
