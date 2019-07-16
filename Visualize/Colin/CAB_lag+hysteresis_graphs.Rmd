@@ -7,39 +7,42 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load( gridExtra )
+pacman::p_load( grid, gridExtra )
 ```
 
+#The code below relies on a version of B1 (the finalized sheet) with a column where storms have been identified
 
-```{r make and save a lag graph for each storm}
+```{r make and save figures with graphs for discharge + hysteresis for each storm}
 
-stormdata <- filter(B1, Storm_ID == "2013-01-15 02:00:00")
+#get a unique list of storm starts. Ensure Na is not included.
+stormstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
 
+loopstart <- Sys.time()
 
-p_discharge <- ggplot( stormdata ) +
-  coord_cartesian( ylim = c(0, max(B1$Discharge) ) ) +
-  geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue")
+#Loop through each storm, graphing and saving each one.
+for( ID in stormstarts){
+  
+  stormdata <- filter(B1, Storm_ID == ID)
+  
+  p_discharge <- ggplot( stormdata ) +
+    coord_cartesian( ylim = c(0, max(B1$Discharge) ) ) +
+    geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue")
+  
+  p_spcond <- ggplot( stormdata ) +
+    coord_cartesian( ylim = c(0, max( B1$SpCond_uScm[!is.na(B1$SpCond_uScm)] ) ) ) +
+    geom_path( mapping = aes( x = DateTime, y = SpCond_uScm, color = "brown") )
+  
+  hyst <- ggplot( stormdata, aes(x = Discharge, y = SpCond_uScm, color = DateTime) ) +
+    geom_point() +
+    geom_path()
+  
+  p <- arrangeGrob( arrangeGrob(p_discharge, p_spcond, nrow = 2), hyst, nrow = 2 )
+  png( paste( "./Storm Plots/", ID, ".png", sep = "" ),
+       width = 8, height = 10, units = "in", res = 200)
+  grid.draw(p)
+}
 
-
-p_Turb <- ggplot( stormdata ) +
-  coord_cartesian( ylim = c(0, max( subset( B1$Turb_NTU, !is.na(B1$Turb_NTU) ) ) ) ) +
-  geom_path( mapping = aes( x = DateTime, y = Turb_NTU), color = "brown")
-
-
-#save as grobs and plot over one another.
-#ggplot is philosophically against -- and doesn't allow -- plotting two datasets with different scales in the same graph. so I'll need to plot things separately.
-gD <- ggplotGrob(p_discharge)
-# gD <- gtable_add_cols(gD, unit(0,"mm")) # add a column for missing legend
-gT <- ggplotGrob(p_Turb)
-g <- rbind(gD, gT) # stack the two plots
-g$widths <- unit.pmax(gD$widths, gT$widths) # use the largest widths
-# center the legend vertically
-g$layout[grepl("guide", g$layout$name),c("t","b")] <- c(1,nrow(g))
-grid.newpage()
-grid.draw(g)
-
-
-#use the basic plotting function to get around ggplot's objections
-plot( stormdata$DateTime, y = stormdata$Discharge, type = "l", col = "blue") 
-lines( stormdata$DateTime, y = stormdata$Turb_NTU / max(stormdata$Turb_NTU), col = "brown")
+graphics.off()
+print( "Graphing Completed in", Sys.time() - loopstart )
+rm(p_discharge, p_spcond, hyst, p, ID, stormstarts, stormdata)
 ```

@@ -5,6 +5,11 @@ date: "7/10/2019"
 output: html_document
 ---
 
+#This code identifies "storms" (continuous periods of high discharge). To record them, it adds a cell in the column "Storm_ID" containing the start date and time of the storm to each row within the storm event.
+#Na values within "Storm_ID" mean that the row is not within a storm. Further code using Storm_ID should reflect this, of course.
+#This also contains a section of code calculating each storm's discharge volume. It adds the measurement to a new column, "Vol_m^3," for each row within the storm's time period.
+
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #install.packages(pacman)
@@ -12,7 +17,7 @@ pacman::p_load( tidyverse, lubridate)
 ```
 
 
-```{r Read in Bridge 1 data and add a flagging column for high discharge "storm" values}
+```{r Read in QAQC-ed Bridge 1 data and add a flagging column for high discharge "storm" values}
 
 B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
   mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
@@ -85,5 +90,16 @@ if( B1$Flag_High_Discharge[1] == 1 )
 }
 
 
+#format Storm_ID to not contain a colon and thus be easily printable
+B1 <- mutate( B1, Storm_ID = gsub(":",".", Storm_ID) )
+
+
 rm( i, storm_ID, last_stormr)
+```
+
+
+```{r calculate and record volume}
+
+
+
 ```

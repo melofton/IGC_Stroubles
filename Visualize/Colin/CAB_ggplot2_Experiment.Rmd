@@ -7,8 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
-library(lubridate)
+pacman::p_load( tidyverse, lubridate )
 ```
 
 
@@ -108,13 +107,7 @@ for( vars in years ){
     geom_line() +
     labs( title = paste( vars, "Discharge") )
     )
-  
-  
-
 }
-
-
-
 ```
 
 
