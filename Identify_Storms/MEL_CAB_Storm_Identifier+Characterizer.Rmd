@@ -120,3 +120,29 @@ for( ID in stormstarts ){
 
 rm( stormstarts, stormdata, ID, vol)
 ```
+
+
+```{r Use B1 to create an (easily viewable) tibble with information on each storm, like volume, time length, magnitude (volume / timelength)}
+
+vol_extracter <- function( a ){
+  a[1]
+}
+
+#This returns the timelength in seconds
+timelength_extracter <- function( a ){
+  a[length(a)] %>% as.numeric() - a[1] %>% as.numeric()
+}
+
+storm_info <- B1 %>% group_by( Storm_ID ) %>%
+  summarize( Vol_mcubed = vol_extracter(Storm_Vol), length_H = timelength_extracter(DateTime) / 3600, Intensity = Vol_mcubed / length_H ) %>%
+  #drop the "NA" row which summarizes all non-storm events
+  filter( !is.na(Storm_ID) )
+
+rm( vol_extracter, timelength_extracter)
+
+storm_info
+```
+
+```{r save the storm summary table}
+write_csv(storm_info,"./Storm_Summaries.csv")
+```
