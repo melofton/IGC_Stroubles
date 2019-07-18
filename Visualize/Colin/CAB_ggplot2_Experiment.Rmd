@@ -102,7 +102,7 @@ for( vars in years ){
 
   print( ggplot( filter( B1,
                   year(DateTime) == vars ),
-          aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge) ) +
+          aes(x = DateTime, y = Discharge, color = Flag_High_Discharge) ) +
     geom_point() + 
     geom_line() +
     labs( title = paste( vars, "Discharge") )

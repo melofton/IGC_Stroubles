@@ -22,8 +22,8 @@ pacman::p_load( tidyverse, lubridate)
 B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
   mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
         #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
-          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.9, names = FALSE), 1, 0) )
-  ```
+          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.99, names = FALSE), 1, 0) )
+```
 
 
 
@@ -104,9 +104,9 @@ rm( i, storm_ID, last_stormr)
 B1$Storm_Vol <- NA
 
 #get a unique list of storm starts. Ensure Na is not included.
-stormstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
+stormsstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
 
-for( ID in stormstarts ){
+for( ID in stormsstarts ){
   stormdata <- filter( B1, Storm_ID == ID )
 
   vol <- integrate( splinefun( stormdata$DateTime, stormdata$Discharge ),
@@ -118,7 +118,7 @@ for( ID in stormstarts ){
 }
 
 
-rm( stormstarts, stormdata, ID, vol)
+rm( stormsstarts, stormdata, ID, vol)
 ```
 
 
@@ -133,16 +133,16 @@ timelength_extracter <- function( a ){
   a[length(a)] %>% as.numeric() - a[1] %>% as.numeric()
 }
 
-storm_info <- B1 %>% group_by( Storm_ID ) %>%
+storms_info <- B1 %>% group_by( Storm_ID ) %>%
   summarize( Vol_mcubed = vol_extracter(Storm_Vol), length_H = timelength_extracter(DateTime) / 3600, Intensity = Vol_mcubed / length_H ) %>%
   #drop the "NA" row which summarizes all non-storm events
   filter( !is.na(Storm_ID) )
 
 rm( vol_extracter, timelength_extracter)
 
-storm_info
+storms_info
 ```
 
 ```{r save the storm summary table}
-write_csv(storm_info,"./Storm_Summaries.csv")
+write_csv(storms_info,"./Storm_Summaries.csv")
 ```
