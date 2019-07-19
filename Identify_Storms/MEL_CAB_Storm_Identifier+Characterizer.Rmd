@@ -52,7 +52,7 @@ rm( i, storm_ID)
 
 
 ```{r Identify storms by adding a "Storm_ID" column holding each storm's start date. FULL dataset version}
-#This version identifies a storm both when discharge drops below the 90th percentile, and when it's been over an hour since the last "storm" row. To do this, it works with the full, finalized dataset instead of only the portion including storms. 
+#This version identifies a storm both when discharge drops below the 90th percentile and when there's over an hour of difference between the DateTime of the current and previous "storm" rows. To do this, the loop works with the full, finalized dataset instead of only the portion including storms. 
 #We identify the same number of storms with this method (I don't think there are all that many events where discharge bottoms out RIGHT below the 90th percentile and then jumps back up over it within the hour), but it's good to be thorough.
 
 
@@ -98,7 +98,8 @@ rm( i, storm_ID, last_stormr)
 ```
 
 
-```{r calculate volume of each storm. Add volume measurement to its own column within each storm.}
+```{r calculate the volume of each storm}
+#This needs to use the full B1 data set, so it happens before storms_info is created. The volume calculations are added to each row within their respective storm.
 
 #create a new column in B1 to record storm volume
 B1$Storm_Vol <- NA
@@ -142,6 +143,7 @@ rm( vol_extracter, timelength_extracter)
 
 storms_info
 ```
+
 
 ```{r save the storm summary table}
 write_csv(storms_info,"./Storm_Summaries.csv")

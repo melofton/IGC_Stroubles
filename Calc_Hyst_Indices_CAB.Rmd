@@ -16,7 +16,7 @@ pacman::p_load( tidyverse, lubridate, geometry )
 
 
 
-```{r calculate hysteresis volume of hysteresis loops polyarea(). Save indices to a new column in storms_info}
+```{r calculate area of hysteresis loops using polyarea(). Save indices to a new column in storms_info}
 
 storms_info$H_Index <- NA 
 

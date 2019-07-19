@@ -1,0 +1,52 @@
+---
+title: "Per-Storm Graphs controlled for Season and Intensity"
+author: "Colin Baciocco"
+date: "7/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages(pacman)
+pacman::p_load( tidyverse, lubridate)
+```
+#Environment Dependencies: B1 and storm_info
+#This document is designed to let me look at graphs of per-storm hysteresis and, hopefully, see differences between seasons
+
+
+```{r add a column to storms_info which categorizes storms by season}
+season_categorizer <- function( a ){
+  if( month(a) %in% c( 12, 1, 2) ) return( "Winter" )
+      else if( month(a) %in% c( 3, 4, 5 )) return( "Spring" )
+              else if( month(a) %in% c(6, 7, 8) ) return( "Summer" )
+                    else return( "Fall" )
+}
+
+storms_info$Season <- lapply( storms_info$Storm_ID, season_categorizer )
+
+rm( season_categorizer )
+```
+
+
+```{r add a column to storms_info which categorizes storms by volume}
+#The value in bin says that the storm's volume is at or above the percentile listed, but lower than the next highest percentile (so 92nd percentile intensity would be listed as "90%")
+
+storms_info$bin <- NA
+
+n <- 10
+
+for( r in nrow(storms_info) ){
+
+  for(a in 0:n){
+
+    quant <- quantile(storms_info$Vol_mcubed, (1/n) * 0:n)[a]
+      
+    if( storms_info$Vol_mcubed[r] >= quant[[1]]  ){
+      print(names(quant))
+      storms_info[ r, "bin"] <- names(quant)
+    }
+  }
+}
+
+rm( r, n, a, quant)
+```
