@@ -8,7 +8,8 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #install.packages(pacman)
-pacman::p_load( tidyverse, lubridate)
+#install.packages(grid, gridExtra, cowplot)
+pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot)
 ```
 #Environment Dependencies: B1 and storm_info
 #This document is designed to let me look at graphs of per-storm hysteresis and, hopefully, see differences between seasons
@@ -22,31 +23,63 @@ season_categorizer <- function( a ){
                     else return( "Fall" )
 }
 
-storms_info$Season <- lapply( storms_info$Storm_ID, season_categorizer )
+storms_info$Season <- vapply( storms_info$Storm_ID, season_categorizer, "character" )
 
 rm( season_categorizer )
 ```
 
 
-```{r add a column to storms_info which categorizes storms by volume}
-#The value in bin says that the storm's volume is at or above the percentile listed, but lower than the next highest percentile (so 92nd percentile intensity would be listed as "90%")
+```{r add a column to storms_info which categorizes storms by volume. Should it instead be by intensity?}
+#The value in bin says that the storm's volume is at or above the percentile listed, but lower than the next highest percentile (so 92nd -- or even 100th -- percentile intensity would be listed as "90%")
 
-storms_info$bin <- NA
+storms_info$vol_bin <- NA
 
+#n sets the number of bins we'd like to have
 n <- 10
+quant <- quantile(storms_info$Vol_mcubed, (1/n) * 0:n) 
 
-for( r in nrow(storms_info) ){
+for( r in 1:nrow(storms_info) ){
 
-  for(a in 0:n){
-
-    quant <- quantile(storms_info$Vol_mcubed, (1/n) * 0:n)[a]
+  for(a in n:1){
       
-    if( storms_info$Vol_mcubed[r] >= quant[[1]]  ){
-      print(names(quant))
-      storms_info[ r, "bin"] <- names(quant)
+    if( storms_info$Vol_mcubed[r] <= quant[[a+1]] & storms_info$Vol_mcubed[r] >= quant[[a]] ){
+      storms_info[ r, "vol_bin"] <- names(quant[a])
     }
   }
 }
 
 rm( r, n, a, quant)
+```
+
+
+```{r order storms_info by season and bin}
+storms_info <- storms_info %>% arrange( Season, vol_bin)
+```
+
+
+```{r bulk hysteresis visualisation}
+#Loops through storms by season, graphing them, storing them in a list, and then graphing the entire list in a grid
+
+plot_storm = function ( ID, data = filter( B1, Storm_ID == ID) ) {
+    ggplot( data, aes(x = Discharge, y = SpCond_uScm, color = DateTime)) +
+                        geom_path( arrow = arrow( angle = 40,
+                           ends = "last",
+                           length = unit(0.1, "inches"),
+                           type = "closed" ) ) +
+                        ggtitle( label = paste("Hysteresis of", ID), subtitle = paste("with Vol_bin", storms_info$vol_bin[ storms_info$Storm_ID == ID ])  ) 
+    
+}
+
+
+for( Season in storms_info$Season %>% unique() ){
+  print(Season)
+  myplots <- lapply(storms_info$Storm_ID[ storms_info$Season == Season],
+                    plot_storm)
+  
+  png( paste("./Season Plots/", Season, "_Plot_Grid.png", sep = ""), width = 30, height = 30, units = "in", res = 200)
+  plot_grid(plotlist = myplots, nrow = 7 ) %>% print()
+  dev.off()
+}
+
+rm( myplots, Season, plot_storm)
 ```
