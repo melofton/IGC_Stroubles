@@ -52,7 +52,7 @@ rm( r, n, a, quant)
 ```
 
 
-```{r order storms_info by season and bin}
+```{r order storms_info by season and bin and save the new sheet}
 storms_info <- storms_info %>% arrange( Season, vol_bin)
 ```
 
@@ -66,7 +66,12 @@ plot_storm = function ( ID, data = filter( B1, Storm_ID == ID) ) {
                            ends = "last",
                            length = unit(0.1, "inches"),
                            type = "closed" ) ) +
-                        ggtitle( label = paste("Hysteresis of", ID), subtitle = paste("with Vol_bin", storms_info$vol_bin[ storms_info$Storm_ID == ID ])  ) 
+                        ggtitle( label = paste("Hysteresis of", ID), 
+                                 subtitle = paste("with Vol_bin",
+                                                                                  storms_info$vol_bin[ storms_info$Storm_ID == ID ] ,
+                                                                                  "; Hour length:",
+                                                                                  storms_info$length_H[ storms_info$Storm_ID == ID ],
+                                                                                  "; H *index*:", storms_info$H_Index[storms_info$Storm_ID == ID] %>% round(3) )) 
     
 }
 
@@ -80,6 +85,6 @@ for( Season in storms_info$Season %>% unique() ){
   plot_grid(plotlist = myplots, nrow = 7 ) %>% print()
   dev.off()
 }
-
+  
 rm( myplots, Season, plot_storm)
 ```
