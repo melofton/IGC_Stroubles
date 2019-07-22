@@ -19,6 +19,7 @@ pacman::p_load( tidyverse, lubridate, geometry )
 ```{r calculate area of hysteresis loops using polyarea(). Save indices to a new column in storms_info}
 
 storms_info$H_Index <- NA 
+storms_info$polyarea <- NA
 
 #get a unique list of storm starts. Ensure Na values are not included.
 stormsstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
@@ -34,6 +35,9 @@ for( ID in stormsstarts){
   stormdata <- filter( B1, Storm_ID == ID ) %>% filter( !is.na(SpCond_uScm) )
   
   storms_info[stormcount, "H_Index"] <- 
+    polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
+  
+    storms_info[stormcount, "polyarea"] <- 
     polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
 }
 

@@ -14,11 +14,12 @@ pacman::p_load( tidyverse, lubridate )
 #read in finalized B1 sheet
 ```{r Data Read-In}
 
-B1 <- read_csv("./Data_QAQC/Colin/B1.csv") %>%
-  mutate( DateTime = parse_date_time(DateTime, "ymd H M S"),
-        #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
-        Flag_NinetyQDischarge = ifelse( Discharge > quantile( Discharge, .9, names = FALSE), 1, 0 ) ) %>%
-  group_by( Year = year(DateTime), Month = month(DateTime) )
+B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
+  mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
+        #As in "Storm_Identifier+Characterizer", create a new column where 1 demonstrates discharge being above the 99th percentile, 0 means it is not
+        #Feel free to use other percentiles, of course.
+        #It appears that we identify 609 unique storms if the 90th perentile is our threshold, and 122 storms if we use the 99th.
+          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.99, names = FALSE), 1, 0) )
 
 
 BrynnDates <- read_csv( "./Visualize/Colin/Brynn_Dates.csv", col_names = FALSE )[[1]] %>%
@@ -43,7 +44,7 @@ Month_MaxMin_Dis
 
 MaxDischarge.Plot <- ggplot( Month_MaxMin_Dis, aes( x = Year + Month/12, y = MaxDischarge, color = Month) ) + geom_point() + geom_path() + labs( title = "Maximum Discharge by Month") +
   annotate( "point", x = min(B1$Year + B1$Month/12 - .5), y = quantile(B1$Discharge, 0.9, names = FALSE), ) +
-  annotate( "text", x = min(B1$Year + B1$Month/12 - .5), y = quantile(B1$Discharge, 0.9, names = FALSE), label = "90th Quantile")
+  annotate( "text", x = min(B1$Year + B1$Month/12 - .5), y = quantile(B1$Discharge, 0.9, names = FALSE), label = "99th Quantile")
 
 last_plot()
 
@@ -64,30 +65,14 @@ last_plot()
 
 ```
 
-```{r stephen hysteresis plots}
-BrynnDates
-
-June02.13 <- subset(B1, DateTime > "2013-03-31 0:00:00" & DateTime < "2013-04-01 23:45:00" )
-
-ggplot(June02.13, aes(x=Discharge, y=SpCond_uScm) ) +
-  geom_point( color = "red" )+
-  geom_path( color = "blue4" )
-
-ggsave( paste( "./Discharge Plots/", "2013-03-31 to 04-01",".pdf", sep = "" ),
-              width = 10, height = 6 )
-
-```
 
 
-
-```{r graph every discharge point}
+```{r graph every single discharge point}
 
 #Look at patterns of discharge to identify storms and rainy seasons
-graph1 <- ggplot(data = B1, aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge)) + geom_point() + geom_path()
+ggplot(data = B1, aes(x = DateTime, y = Discharge, color = Flag_High_Discharge)) + geom_point() + geom_path()
 
-graph1
-
-
+last_plot()
 ```
 
 
@@ -130,14 +115,14 @@ for( y_vars in years ){
       m_data <- filter( y_data, month(DateTime) == m_vars )
     
       ggplot( m_data,
-              aes(x = DateTime, y = Discharge, color = Flag_NinetyQDischarge) ) +
+              aes(x = DateTime, y = Discharge, color = Flag_High_Discharge) ) +
             geom_point() +
             geom_line() +
             coord_cartesian( ylim = c(0, 18),
                              #xlim = c( m_data$DateTime[1], m_data$DateTime[length(m_data)])
                              ) +
-            labs( title = paste( y_vars, month.name[m_vars], "Discharge") )
-    
+            labs( title = paste( y_vars, month.name[m_vars], "Discharge"), subtitle = "Storm Threshold set at 99th percentile of discharge, but check code if this seems out of date")
+      
       ggsave( paste( "./Discharge Plots/", y_vars, " ", month.name[m_vars],  ".png", sep = "" ),
               width = 15, height = 8 )
     

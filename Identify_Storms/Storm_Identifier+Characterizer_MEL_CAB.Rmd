@@ -73,7 +73,7 @@ rm( i, storm_ID, last_stormr)
 ```
 
 
-```{r calculate the volume of each storm}
+```{r calculate the volume of each storm.}
 #This needs to use the full B1 data set, so it happens before storms_info is created. The volume calculations are added to each row within their respective storm.
 
 #create a new column in B1 to record storm volume
@@ -98,7 +98,8 @@ rm( stormsstarts, stormdata, ID, vol)
 ```
 
 
-```{r Use B1 to create an (easily viewable) tibble with information on each storm, like volume, time length, magnitude (volume / timelength)}
+```{r Use B1 to create an (easily viewable) tibble with summary information on each storm}
+#summary info includes volume, time length, magnitude (volume / timelength)
 
 vol_extracter <- function( a ){
   a[1]
@@ -115,8 +116,6 @@ storms_info <- B1 %>% group_by( Storm_ID ) %>%
   filter( !is.na(Storm_ID) )
 
 rm( vol_extracter, timelength_extracter)
-
-storms_info
 ```
 
 

@@ -85,7 +85,10 @@ for( ID in stormsstarts ){
                                                       sum(is.na(stormdata$SpCond_uScm))
                                                       )),
                                      textGrob( paste( "Hysteresis *Index*:", storms_info$H_Index[storm_count] %>%
-                                                       round(3))),
+                                                       round(3),
+                                                      "    ",
+                                                      "Difference Between Sp_Peak and "
+                                                      stormdata$SpCond ))
                                      nrow = 5),
                                    d_month_graph,
                                    q_month_graph,
