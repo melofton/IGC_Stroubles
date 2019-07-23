@@ -130,8 +130,7 @@ for( y_vars in years ){
 }
 
 print( paste( "Graphing completed in:", Sys.time() - timestart_graphingbymonthyear, "minutes" ) )
-rm( months, years y_vars, m_vars, y_data, m_data, timestart_graphingbymonthyear )
-
+rm( months, years, y_vars, m_vars, y_data, m_data, timestart_graphingbymonthyear )
 ```
 
 
