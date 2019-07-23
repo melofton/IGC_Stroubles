@@ -8,10 +8,16 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #install.packages(pacman)
-pacman::p_load( tidyverse, lubridate, grid, gridExtra )
+pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot )
 ```
 
 #This document has the same environmental dependencies as "lag+hysteresis_graphs_CAB.Rmd"
+#The needed sheets can also be loaded with:
+#write_csv(B1, "B1_viz.csv")
+
+#read_csv("./Visualize/B1_viz.csv", col_types = list( col_datetime(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_character(), col_double()))
+
+#read_csv("./Visualize/filt_storms_info.csv")
 
 
 ```{r calculate "timelag_m" and add it to storms_info}
@@ -30,7 +36,7 @@ rm(timelag_extracter)
 ```
 
 
-```{r select only storms where it seems like sensor wasn't out of the water at the start or end}
+```{r select only storms where it seems like sensor wasn't out of the water at the storm's start}
 badstorms <- c()
 
 for( ID in storms_info$Storm_ID){
@@ -42,7 +48,7 @@ for( ID in storms_info$Storm_ID){
   }
 }
 
-filtered_storms_info <- filter( storms_info, !(Storm_ID %in% badstorms))
+filt_storms_info <- filter( storms_info, !(Storm_ID %in% badstorms))
 
 rm( ID, stormdata, badstorms)
 ```
@@ -50,14 +56,16 @@ rm( ID, stormdata, badstorms)
 
 ```{r make and save one graph with each storm's timelag_min on the y and date on the x}
 
-ggplot( filtered_storms_info, mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min, color = Season)) +
+ggplot( filt_storms_info, mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min, color = Season)) +
   geom_point() +
   ggtitle("Timelag Between SpCond Peak and Discharge Peak of Select Storms") +
   xlab("DateTime") +
-  ylab("timelag (Minutes)")
+  ylab("timelag (Minutes)") +
+  geom_hline( yintercept = 0, color = "black", linetype = "dotted")
 
 ggsave( "./Timelag_Plot.png", width = 8, height = 6, units = "in")
 ```
+
 
 
 ```{r produce per-storm graphs of discharge and variation in whatever water quality measure is of note}
@@ -70,13 +78,13 @@ storm_month <- 0
 loopstart <- Sys.time()
 
 #Loop through each storm, graphing and saving them one-by-one IF there's more than a few rows of data.
-for( ID in filtered_storms_info$Storm_ID ){
+for( ID in filt_storms_info$Storm_ID ){
   
   graphstart <- Sys.time()
   
   #pick out the data we're going to use 
   stormdata <- filter(B1, Storm_ID == ID)
-  stormmetadata <- filter( filtered_storms_info, Storm_ID == ID)
+  stormmetadata <- filter( filt_storms_info, Storm_ID == ID)
   
   
   #if the "storm" has more than two or three rows of data, graph and save it
@@ -156,4 +164,30 @@ for( ID in filtered_storms_info$Storm_ID ){
 
 print( paste( "Graphing for all storms completed in", Sys.time() - loopstart, "minutes" ) )
 rm(p_discharge, p_spcond, hyst, p, ID, stormdata, stormmetadata, loopstart, graphstart, d_month_graph, q_month_graph, storm_month)
+```
+
+
+```{r graph timelag within the year}
+
+for( year in unique(year(filt_storms_info$Storm_ID))){
+  print( ggplot( filter(filt_storms_info, year(Storm_ID) == year), mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min), color = Season) +
+      geom_point() +
+      ggtitle(paste(year, "s Timelag Between SpCond Peak and Discharge Peak of Select Storms Vs Intensity", sep = "")) +
+      xlab("DateTime") +
+      ylab("timelag (Minutes)") )
+}
+
+rm(year)
+```
+
+
+```{r graph timelag against storm intensity}
+ggplot( filt_storms_info, mapping = aes(x = Intensity, y = timelag_min)) +
+  geom_point() +
+  xlab("Intensity (m^3/hr)") +
+  theme_half_open()
+```
+
+```{r graph boxplots}
+
 ```

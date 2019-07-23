@@ -1,0 +1,23 @@
+---
+title: "B1 Baseflow Conductivity View"
+author: "Colin Baciocco"
+date: "7/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+BaseB1 <- read_csv("./7_12_19_B1_Sp_Cond.csv",
+                   col_names = FALSE, 
+                   col_types = list( col_double(),
+                                     col_datetime(),
+                                     col_double(),
+                                     col_double(),
+                                     col_double()) )
+
+
+ggplot()
+```

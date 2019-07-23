@@ -1,0 +1,4 @@
+#ignore .csv's
+*.csv
+#But don't ignore "Brynn_Dates"
+!Brynn_Dates.csv
