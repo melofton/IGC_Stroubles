@@ -8,10 +8,6 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-```
-
-#load packages
-```{r}
 #install.packages(pacman)
 pacman::p_load(tidyverse, lubridate)
 ```
@@ -114,6 +110,7 @@ stageToDischarge <- function( a ) {
 #calculate and add discharge to stage sheet
 B1_stage_QA$Discharge <- sapply( B1_stage_QA$Lvl_m, stageToDischarge)
 
+rm(stageToDischarge)
 
 #cut WQ data down to just those rows for which we have stage and discharge data
 #(It shouldn't drop too much -- just 15,000 or so rows out of ~230,000.)

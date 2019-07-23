@@ -46,7 +46,7 @@ for( ID in stormsstarts ){
       xlab("")
     
     p_spcond <- ggplot( stormdata ) +
-      #Common scale for per-storm WQ graph is also commented out
+      #again, the function ensuring a common scale is commented out
       #coord_cartesian( ylim = c(0, max( B1$SpCond_uScm[!is.na(B1$SpCond_uScm)] ) ) ) +
       geom_path( mapping = aes( x = DateTime, y = SpCond_uScm), color = "brown" ) +
       xlab("")

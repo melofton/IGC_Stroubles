@@ -1,0 +1,159 @@
+---
+title: "Poster Visuals"
+author: "Colin Baciocco"
+date: "7/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages(pacman)
+pacman::p_load( tidyverse, lubridate, grid, gridExtra )
+```
+
+#This document has the same environmental dependencies as "lag+hysteresis_graphs_CAB.Rmd"
+
+
+```{r calculate "timelag_m" and add it to storms_info}
+#"timelag" is the number of minutes between one the peak of SpCond and the peak of Discharge for that storm
+
+#compute "timelag". This will be positive if SpCond peaks before discharge, negative if it doesn't.
+#If there are multiple maximums for either SpCond or discharge, the function returns the distance between the first of the two peaks
+timelag_extracter <- function( ID, stormdata = filter(B1, Storm_ID == ID )){
+  (as.numeric(stormdata$DateTime[ max(stormdata$Discharge) == stormdata$Discharge ][1]) -
+  as.numeric(stormdata$DateTime[ max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm ][1])) / 60
+}
+
+storms_info$timelag_min <- vapply( storms_info$Storm_ID, timelag_extracter, 1)
+  
+rm(timelag_extracter)
+```
+
+
+```{r select only storms where it seems like sensor wasn't out of the water at the start or end}
+badstorms <- c()
+
+for( ID in storms_info$Storm_ID){
+  
+  stormdata <- filter( B1, Storm_ID == ID )
+  
+  if( max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm[1] | max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm[nrow(stormdata)] ){
+    badstorms[length(badstorms)+1] <- ID
+  }
+}
+
+filtered_storms_info <- filter( storms_info, !(Storm_ID %in% badstorms))
+
+rm( ID, stormdata, badstorms)
+```
+
+
+```{r make and save one graph with each storm's timelag_min on the y and date on the x}
+
+ggplot( filtered_storms_info, mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min, color = Season)) +
+  geom_point() +
+  ggtitle("Timelag Between SpCond Peak and Discharge Peak of Select Storms") +
+  xlab("DateTime") +
+  ylab("timelag (Minutes)")
+
+ggsave( "./Timelag_Plot.png", width = 8, height = 6, units = "in")
+```
+
+
+```{r produce per-storm graphs of discharge and variation in whatever water quality measure is of note}
+#this also prints "timelag", and reuses a lot of code from "lag+hysteresis_graphs_CAB.Rmd"
+
+
+#init counter
+storm_month <- 0
+
+loopstart <- Sys.time()
+
+#Loop through each storm, graphing and saving them one-by-one IF there's more than a few rows of data.
+for( ID in filtered_storms_info$Storm_ID ){
+  
+  graphstart <- Sys.time()
+  
+  #pick out the data we're going to use 
+  stormdata <- filter(B1, Storm_ID == ID)
+  stormmetadata <- filter( filtered_storms_info, Storm_ID == ID)
+  
+  
+  #if the "storm" has more than two or three rows of data, graph and save it
+  if( nrow(stormdata) > 6 ){
+  
+    #make graphs
+    p_discharge <- ggplot( stormdata ) +
+      #the function ensuring that the per-storm discharge graph has a common scale is commented out
+      #coord_cartesian( ylim = c(0, max(B1$Discharge) ) ) +
+      geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue") +
+      geom_vline( xintercept = stormdata$DateTime[ max(stormdata$Discharge) == stormdata$Discharge ], color = "purple")
+      xlab("")
+    
+    p_spcond <- ggplot( stormdata ) +
+      #Common scale for per-storm WQ graph is also commented out
+      #coord_cartesian( ylim = c(0, max( B1$SpCond_uScm[!is.na(B1$SpCond_uScm)] ) ) ) +
+      geom_path( mapping = aes( x = DateTime, y = SpCond_uScm), color = "brown" ) +
+      geom_vline( xintercept = stormdata$DateTime[ max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm ], color = "purple")
+      xlab("")
+    
+    hyst <- ggplot( stormdata, aes(x = Discharge, y = SpCond_uScm, color = DateTime) ) +
+      geom_path(arrow = arrow( angle = 40, ends = "last", length = unit(0.1, "inches"), type = "closed" ) )
+    
+    #only make a new graph for the discharge and conductivity over the entire month if it's a new month
+    if( storm_month != month(ID) ){
+      storm_month <- month(ID)
+      d_month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
+                             mapping = aes( x = DateTime, y = Discharge, color = Flag_High_Discharge )) +
+        geom_path() +
+        ggtitle(paste("Overall", month.name[storm_month],"Discharge"))
+      
+      #also make a monthly graph for whatever WQ measure is in the hysteresis plot
+      q_month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
+                             mapping = aes( x = DateTime, y = SpCond_uScm)) +
+        geom_path(color = "brown") +
+        ggtitle(paste("Overall", month.name[storm_month],"SpCond_uScm"))
+      }
+    
+      
+    #combine the graphs as one grob, or "graphics object", and add some descriptive text at the top
+    p <- arrangeGrob( arrangeGrob( arrangeGrob( textGrob( paste( "Storm ID:", ID ) ),
+                                   textGrob( paste("DateTime of Printing:", Sys.time())),
+                                   textGrob( paste( "Number of Storm Rows:", nrow(stormdata))),
+                                   textGrob( paste( "Volume:", stormmetadata$Vol_mcubed %>%
+                                                       round(3),  "m^3",
+                                                      "    ",
+                                                      "Time Span:", stormmetadata$length_H, "Hours",
+                                                      "    ", 
+                                                      "*Intensity*:", stormmetadata$Intensity %>%
+                                                       round(3), "m^3 / Hr")),
+                                     textGrob( paste( "Number of NaN WQ values in Storm:",
+                                                      sum(is.na(stormdata$SpCond_uScm))
+                                                      )),
+                                     textGrob( paste( "Hysteresis *Index*:", stormmetadata$H_Index %>%
+                                                       round(3),
+                                                      "    ",
+                                                      "Time Difference Between Sp_Peak and Discharge Peak:",
+                                                      stormmetadata$timelag_min,
+                                                      "minutes")),
+                                     nrow = 6),
+                                   d_month_graph,
+                                   q_month_graph,
+                                   nrow = 3),
+                      arrangeGrob(p_discharge, p_spcond, nrow = 2),
+                      nrow = 2 )
+    
+    #save the grob as a picture
+    png( paste( "./Timelag Plots/", ID, ".png", sep = "" ),
+         width = 10, height = 12, units = "in", res = 200)
+    grid.draw(p)
+    dev.off()
+    
+    print( paste( "Graphing for", ID, "completed in", Sys.time() - graphstart, "seconds" ) )
+  }
+}
+
+
+print( paste( "Graphing for all storms completed in", Sys.time() - loopstart, "minutes" ) )
+rm(p_discharge, p_spcond, hyst, p, ID, stormdata, stormmetadata, loopstart, graphstart, d_month_graph, q_month_graph, storm_month)
+```

@@ -36,10 +36,6 @@ for( ID in stormsstarts){
   
   storms_info[stormcount, "H_Index"] <- 
     polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
-  
-    storms_info[stormcount, "polyarea"] <- 
-    polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
-}
 
 rm(stormsstarts, stormcount, ID, stormdata)
 ```
