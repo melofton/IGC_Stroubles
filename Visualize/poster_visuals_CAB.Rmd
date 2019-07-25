@@ -8,13 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #install.packages(pacman)
-pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot )
+pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot, chron )
 ```
 
 #This document has the same environmental dependencies as "lag+hysteresis_graphs_CAB.Rmd"
 #If the reference csvs have been created beforehand, the needed sheets can also be loaded using the section below
 
-```{r}
+```{r read in csvs for B1 and filt_storms_info if they were previously saved}
 B1 <- read_csv("B1_viz.csv", col_types = list( col_datetime(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_character(), col_double()))
 
 filt_storms_info <- read_csv("filt_storms_info.csv")
@@ -57,7 +57,7 @@ rm( ID, stormdata, badstorms)
 
 ```{r make and save one graph with each storm's timelag_min on the y and date on the x}
 
-ggplot( filt_storms_info, mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min, color = Season)) +
+ggplot( filt_storms_info, mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min, color = SaltSeason)) +
   geom_point() +
   ggtitle("Timelag Between SpCond Peak and Discharge Peak of Select Storms") +
   xlab("DateTime") +
@@ -69,7 +69,7 @@ ggsave( "./Timelag_Plot.png", width = 8, height = 6, units = "in")
 
 
 
-```{r produce per-storm graphs of discharge and variation in whatever water quality measure is of note}
+```{r produce per-storm lag graphs for discharge and water quality}
 #this also prints "timelag", and reuses a lot of code from "lag+hysteresis_graphs_CAB.Rmd"
 
 
@@ -153,7 +153,7 @@ for( ID in filt_storms_info$Storm_ID ){
                       nrow = 2 )
     
     #save the grob as a picture
-    png( paste( "./Timelag Plots/", ID, ".png", sep = "" ),
+    png( paste( "./Per-Storm Timelag Plots/", ID, ".png", sep = "" ),
          width = 10, height = 12, units = "in", res = 200)
     grid.draw(p)
     dev.off()
@@ -192,19 +192,18 @@ for( year in unique(year(filt_storms_info$Storm_ID))){
 theme_update(legend.position="right")
 
 #Now plot every single storm by Julian Day
-ggplot( filt_storms_info, mapping = aes( x=yday( parse_date_time(Storm_ID, "ymd HMS")),
+ggplot( filt_storms_info, mapping = aes( x=yday( parse_date_time(Storm_ID, c("ymd HMS","ymd"))),
                                        y=timelag_min,
-                                       )) +
+                                       color = SaltSeason)) +
   geom_point() +
   geom_hline( yintercept = 0, linetype = "dotted") +
-  geom_segment( mapping = aes( xend=yday(parse_date_time(Storm_ID, "ymd HMS")),
-                               yend=0,
-                               linetype=if_else(SaltSeason=="in","solid","longdash"))) +
-  #How to change axis labels?
-  scale_fill_discrete( labels=c("in","out") ) +
+  geom_segment( mapping = aes( xend=yday( parse_date_time(Storm_ID, c("ymd HMS","ymd"))),
+                               yend=0)) +
+  coord_cartesian(ylim = c(-600,500)) +
   labs(x="Julian Day (1-365)",
        y="Lag Time (Minutes)",
-       linetype="Inside 'Salt Season'?") +
+       color="Within 'Salt Season?'") +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
   theme_half_open() + theme(legend.position = c(0.04, 0.88)) 
   
 
@@ -215,13 +214,13 @@ rm(year)
 ```
 
 ```{r boxplots of timelag "inside and outside" salt season}
-theme_half_open()
-
-ggplot( filt_storms_info, mapping = aes( x=SaltSeason, y=timelag_min)) +
+ggplot( filt_storms_info, mapping = aes( x=SaltSeason, y=timelag_min, color = SaltSeason)) +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
   geom_boxplot() +
   labs(title="Lag Time Distribution",
        x="'Salt Season'?",
-       y="")
+       y="") +
+  theme_half_open()
 
 ggsave( "./Timelag by Year/Boxplot of Timelag.png", width = 4, height = 4)
 ```
@@ -242,13 +241,42 @@ BrineDates <- read_csv("VT_Facilities_BrineDates.csv")$Date
 #it's totally possible to automate turning "BrineDates" into something that's usable for classifying "SaltSeason," but I'm just going to do it visually.
 BrineDates <- BrineDates[ c(1,6,7,10,11,16,17,20) ]
 
+#estimate start and end dates for salt deposition in the years when VT facilities didn't provide data
+#This averaging method doesn't address how, on one year, brining started AFTER the the new year, but I think its estimate is good enough. For the mo', we'll just make ensure that that value isn't added.
+j <- yday(BrineDates)
+uBrine_Start <- j[ ( j > 182 ) ]
+uBrine_End <- j[ j < 183 & j > 5 ]
+
+uBrine_Start <- mean(uBrine_Start)
+uBrine_End <- mean(uBrine_End)
+
+
+
 #"Salt Season" extends one month beyond the last salting event
+#there may be a conflict in running this "+" operation with both chron and lubridate loaded
 BrineSeasons <- data.frame( Season = interval(BrineDates[1],BrineDates[2]+days(31), tzone = "EST"))
 
+#Load the "saltseasons" for which we have actual dates
 for( i in c(3,5,7) ){
   BrineSeasons <- add_row( BrineSeasons, Season = interval(BrineDates[i],BrineDates[i+1]+days(31), tzone = "EST"))
 }
-BrineSeasons
+
+#load the "salt seasons" for which we lack dates
+for( i in c(12, 15, 18) ){
+  start <- parse_date_time( paste( month.day.year(jul = uBrine_Start, origin = c(1, 1, 2000+i))$month,
+                                   month.day.year(jul = uBrine_Start, origin = c(1, 1, 2000+i))$day,
+                                   month.day.year(jul = uBrine_Start, origin = c(1, 1, 2000+i))$year),
+                            "m d y")
+  end <- parse_date_time( paste( month.day.year(jul = uBrine_End, origin = c(1, 1, 2000+i+1))$month,
+                                   month.day.year(jul = uBrine_End, origin = c(1, 1, 2000+i+1))$day,
+                                   month.day.year(jul = uBrine_End, origin = c(1, 1, 2000+i+1))$year),
+                            "m d y")
+                            
+                            
+  BrineSeasons <- add_row( BrineSeasons,
+                         Season = interval( start, end + days(31), tzone = "EST"))
+}
+
 
 storms_info$SaltSeason <- vapply( parse_date_time(storms_info$Storm_ID, c("ymd HMS","ymd")),
                                   function( a ){
@@ -260,11 +288,5 @@ storms_info$SaltSeason <- vapply( parse_date_time(storms_info$Storm_ID, c("ymd H
                                   },
                                   FUN.VALUE = "")
 
-rm( i, s, a, BrineDates, BrineSeasons)
-```
-
-
-```{r graph boxplots of timelag for storms "within" a salt season versus those outside it}
-
-
+rm( i, s, a, j, BrineDates, BrineSeasons)
 ```
