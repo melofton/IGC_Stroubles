@@ -76,8 +76,11 @@ rm( i, storm_ID, last_stormr)
 ```{r calculate the volume of each storm.}
 #This needs to use the full B1 data set, so it happens before storms_info is created. The volume calculations are added to each row within their respective storm.
 
-#create a new column in B1 to record storm volume
-B1$Storm_Vol <- NA
+#create a new column in B1 to record storm volume.
+#It needs to be initialized as "NaN" (NOT "NA") to avoid issues with saving and reading B1 as a csv. Apparently, "NaN" is associated with floats (ie, doubles), while NA is not.
+
+
+B1$Storm_Vol <- NaN
 
 #get a unique list of storm starts. Ensure Na is not included.
 stormsstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()

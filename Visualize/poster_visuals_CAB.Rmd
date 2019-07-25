@@ -12,15 +12,16 @@ pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot )
 ```
 
 #This document has the same environmental dependencies as "lag+hysteresis_graphs_CAB.Rmd"
-#The needed sheets can also be loaded with:
-#write_csv(B1, "B1_viz.csv")
+#If the reference csvs have been created beforehand, the needed sheets can also be loaded using the section below
 
-#read_csv("./Visualize/B1_viz.csv", col_types = list( col_datetime(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_character(), col_double()))
+```{r}
+B1 <- read_csv("B1_viz.csv", col_types = list( col_datetime(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_character(), col_double()))
 
-#read_csv("./Visualize/filt_storms_info.csv")
+filt_storms_info <- read_csv("filt_storms_info.csv")
+```
 
 
-```{r calculate "timelag_m" and add it to storms_info}
+```{r calculate "timelag_min" and add it to storms_info}
 #"timelag" is the number of minutes between one the peak of SpCond and the peak of Discharge for that storm
 
 #compute "timelag". This will be positive if SpCond peaks before discharge, negative if it doesn't.
@@ -167,17 +168,62 @@ rm(p_discharge, p_spcond, hyst, p, ID, stormdata, stormmetadata, loopstart, grap
 ```
 
 
-```{r graph timelag within the year}
+```{r graph timelag against Julian Day}
 
 for( year in unique(year(filt_storms_info$Storm_ID))){
-  print( ggplot( filter(filt_storms_info, year(Storm_ID) == year), mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min), color = Season) +
-      geom_point() +
-      ggtitle(paste(year, "s Timelag Between SpCond Peak and Discharge Peak of Select Storms Vs Intensity", sep = "")) +
-      xlab("DateTime") +
-      ylab("timelag (Minutes)") )
+
+  png( paste("./Timelag by Year/Timelag of ", year, ".png", sep = ""), width = 8, height = 6, units = "in", res = 200)
+
+  print( ggplot( filter(filt_storms_info, year(Storm_ID) == year), mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min)) +
+    geom_point() +
+    theme_half_open() +
+    labs(title = paste(year, "'s Timelag Between SpCond Peak and Discharge Peak", sep = ""),
+         subtitle = "(Displaying storms without SpCond peaks at first row of storm data)") +
+    xlab("DateTime") +
+    ylab("timelag (Minutes)") +
+    geom_hline( yintercept = 0, linetype = "dotted")
+  )
+
+  
+  dev.off()
 }
 
+
+theme_update(legend.position="right")
+
+#Now plot every single storm by Julian Day
+ggplot( filt_storms_info, mapping = aes( x=yday( parse_date_time(Storm_ID, "ymd HMS")),
+                                       y=timelag_min,
+                                       )) +
+  geom_point() +
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  geom_segment( mapping = aes( xend=yday(parse_date_time(Storm_ID, "ymd HMS")),
+                               yend=0,
+                               linetype=if_else(SaltSeason=="in","solid","longdash"))) +
+  #How to change axis labels?
+  scale_fill_discrete( labels=c("in","out") ) +
+  labs(x="Julian Day (1-365)",
+       y="Lag Time (Minutes)",
+       linetype="Inside 'Salt Season'?") +
+  theme_half_open() + theme(legend.position = c(0.04, 0.88)) 
+  
+
+
+ggsave( "./Timelag by Year/Overall Timelag.png", width = 6, height = 4)
+
 rm(year)
+```
+
+```{r boxplots of timelag "inside and outside" salt season}
+theme_half_open()
+
+ggplot( filt_storms_info, mapping = aes( x=SaltSeason, y=timelag_min)) +
+  geom_boxplot() +
+  labs(title="Lag Time Distribution",
+       x="'Salt Season'?",
+       y="")
+
+ggsave( "./Timelag by Year/Boxplot of Timelag.png", width = 4, height = 4)
 ```
 
 
@@ -188,6 +234,37 @@ ggplot( filt_storms_info, mapping = aes(x = Intensity, y = timelag_min)) +
   theme_half_open()
 ```
 
-```{r graph boxplots}
+
+```{r import dates for brine application and record in storms_info whether a storm is within that "season"}
+#The dates in the csv were taken from the spreadsheet in the IGC drive
+BrineDates <- read_csv("VT_Facilities_BrineDates.csv")$Date
+
+#it's totally possible to automate turning "BrineDates" into something that's usable for classifying "SaltSeason," but I'm just going to do it visually.
+BrineDates <- BrineDates[ c(1,6,7,10,11,16,17,20) ]
+
+#"Salt Season" extends one month beyond the last salting event
+BrineSeasons <- data.frame( Season = interval(BrineDates[1],BrineDates[2]+days(31), tzone = "EST"))
+
+for( i in c(3,5,7) ){
+  BrineSeasons <- add_row( BrineSeasons, Season = interval(BrineDates[i],BrineDates[i+1]+days(31), tzone = "EST"))
+}
+BrineSeasons
+
+storms_info$SaltSeason <- vapply( parse_date_time(storms_info$Storm_ID, c("ymd HMS","ymd")),
+                                  function( a ){
+                                    b <- "out"
+                                    for( s in 1:nrow(BrineSeasons) ){
+                                      if( a %within% BrineSeasons$Season[s] ) b <- "in"
+                                    }
+                                    b
+                                  },
+                                  FUN.VALUE = "")
+
+rm( i, s, a, BrineDates, BrineSeasons)
+```
+
+
+```{r graph boxplots of timelag for storms "within" a salt season versus those outside it}
+
 
 ```
