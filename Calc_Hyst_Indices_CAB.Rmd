@@ -33,9 +33,23 @@ for( ID in stormsstarts){
   
   stormdata <- filter( B1, Storm_ID == ID ) %>% filter( !is.na(SpCond_uScm) )
   
-  storms_info[stormcount, "H_Index"] <- 
-    polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
+  #Don't calculate a polyarea() hysteresis index if there isn't a loop
+  if(max(stormdata$Discharge) != stormdata$Discharge[nrow(stormdata)]){
+    storms_info[stormcount, "H_Index"] <- 
+      polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
+  } else {
+    storms_info[stormcount, "H_Index"] <- NaN
+  }
 }
 
 rm(stormsstarts, stormcount, ID, stormdata)
+```
+
+
+```{r examine hysteresis indices vs Julian Day}
+ggplot(storms_info, mapping = aes( x=yday( Storm_ID ),
+                                   y=H_Index,
+                                   color=SaltSeason)) +
+  geom_point() +
+  labs(title="Polyarea()-Based Hyeresis Index vs Julian Day")
 ```

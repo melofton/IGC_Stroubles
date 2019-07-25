@@ -32,6 +32,7 @@ for( ID in stormsstarts ){
   
   #pick out the data we're going to use 
   stormdata <- filter(B1, Storm_ID == ID)
+  stormmetadata <- filter( storms_info, Storm_ID == ID)
   
   storm_count <- storm_count + 1
   
@@ -73,18 +74,18 @@ for( ID in stormsstarts ){
     #combine the graphs as one grob, or "graphics object", and add some descriptive text at the top
     p <- arrangeGrob( arrangeGrob( arrangeGrob( textGrob( paste( "Storm ID:", ID ) ),
                                      textGrob( paste( "Number of Storm Rows:", nrow(stormdata))),
-                                     textGrob( paste( "Volume:", storms_info$Vol_mcubed[storm_count] %>%
+                                     textGrob( paste( "Volume:", stormmetadata$Vol_mcubed %>%
                                                        round(3),  "m^3",
                                                       "    ",
-                                                      "Time Span:", storms_info$length_H[storm_count] %>%
+                                                      "Time Span:", stormmetadata$length_H %>%
                                                        round(3), "Hours",
                                                       "    ", 
-                                                      "*Intensity*:", storms_info$Intensity[storm_count] %>%
+                                                      "*Intensity*:", stormmetadata$Intensity %>%
                                                        round(3), "m^3 / Hr")),
                                      textGrob( paste( "Number of NaN WQ values in Storm:",
                                                       sum(is.na(stormdata$SpCond_uScm))
                                                       )),
-                                     textGrob( paste( "Hysteresis *Index*:", storms_info$H_Index[storm_count] %>%
+                                     textGrob( paste( "Hysteresis *Index*:", stormmetadata$H_Index %>%
                                                        round(3))),
                                      nrow = 5),
                                    d_month_graph,
@@ -106,5 +107,5 @@ for( ID in stormsstarts ){
 
 
 print( paste( "Graphing for all storms completed in", Sys.time() - loopstart, "minutes" ) )
-rm(p_discharge, p_spcond, hyst, p, ID, stormsstarts, stormdata, loopstart, storm_count, graphstart, d_month_graph, q_month_graph, storm_month)
+rm(p_discharge, p_spcond, hyst, p, ID, stormsstarts, stormdata, loopstart, storm_count, graphstart, d_month_graph, q_month_graph, stormmetadata, storm_month)
 ```
