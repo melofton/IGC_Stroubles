@@ -21,13 +21,18 @@ pacman::p_load( tidyverse, lubridate)
 
 B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
   mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
-        #Create a new column where 1 demonstrates discharge being above the 90th percentile, 0 means it is not
-          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.99, names = FALSE), 1, 0) )
+        #Create a new column where 1 means discharge is above a certain percentile and 0 means it's not
+        #Before separating by hum and only working by time and discharge, we identifified about 120 storms with a 99th percentile criterion and 609 with a 90th.
+          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.93, names = FALSE), 1, 0) )
 ```
 
 
-```{r Identify storms by adding a "Storm_ID" column holding each storm's start date. FULL dataset version}
-#This version identifies a storm both when discharge drops below the 90th percentile and when there's over an hour of difference between the DateTime of the current and previous "storm" rows. To do this, the loop works with the full, finalized dataset instead of only the portion including storms. 
+```{r Identify storms based on "Flag_High_Discharge". Add a "Storm_ID" column holding each storm's start date.}
+#This version identifies a storm at three different points:
+# 1. when discharge drops below the Flag_High_Discharge percentile
+# 2. when there's over an hour of difference between the DateTime of the current and previous "storm" rows. 
+# 3. when discharge drops back down to a minimum and starts to rise again.
+# To accomplish this identification, the loop works with the full, finalized dataset instead of only the portion including storms. 
 #We identify the same number of storms with this method (I don't think there are all that many events where discharge bottoms out RIGHT below the 90th percentile and then jumps back up over it within the hour), but it's good to be thorough.
 
 
@@ -48,12 +53,16 @@ for(i in 2:nrow(B1) ){
   
   if( B1$Flag_High_Discharge[i] == 1 ){
      
-    if( as.numeric(B1$DateTime[i]) - as.numeric(last_stormr) >= 3600 ){
+    if( (as.numeric(B1$DateTime[i]) - as.numeric(last_stormr)) >= 3600 
+        | B1$Discharge[i-1] >= B1$Discharge[i] & B1$Discharge[i] < B1$Discharge[i+1]
+        ){
           storm_ID <- paste( B1$DateTime[i] )
           B1[i,"Storm_ID"] <- storm_ID
         } else {
           B1[i,"Storm_ID"] <- storm_ID
         }
+    
+    
     last_stormr <- B1$DateTime[i]
   }
 }
