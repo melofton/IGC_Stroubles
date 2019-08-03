@@ -7,13 +7,13 @@ output: html_document
 
 #This code identifies "storms" (continuous periods of high discharge). To record them, it adds a cell in the column "Storm_ID" containing the start date and time of the storm to each row within the storm event.
 #Na values within "Storm_ID" mean that the row is not within a storm. Further code using Storm_ID should reflect this, of course.
-#This also contains a section of code calculating each storm's discharge volume. It adds the measurement to a new column, "Vol_m^3," for each row within the storm's time period.
+#This also contains a section of code calculating each storm's discharge volume and a bunch of other summary statistics.
 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #install.packages(pacman)
-pacman::p_load( tidyverse, lubridate)
+pacman::p_load( tidyverse, lubridate, geometry)
 ```
 
 
@@ -67,7 +67,7 @@ for(i in 2:nrow(B1) ){
   }
 }
 
-#Correct the ID for the first row, if it's a storm 
+#Correct the ID for the first row by identifying it as a storm, if it's a storm 
 if( B1$Flag_High_Discharge[1] == 1 )
 {
   B1[ 1, "Storm_ID" ] <- paste( B1$DateTime[1] )
@@ -83,8 +83,6 @@ rm( i, storm_ID, last_stormr)
 
 
 ```{r calculate the volume of each storm.}
-#This needs to use the full B1 data set, so it happens before storms_info is created. The volume calculations are added to each row within their respective storm.
-
 #create a new column in B1 to record storm volume.
 #It needs to be initialized as "NaN" (NOT "NA") to avoid issues with saving and reading B1 as a csv. Apparently, "NaN" is associated with floats (ie, doubles), while NA is not.
 
@@ -111,7 +109,7 @@ rm( stormsstarts, stormdata, ID, vol)
 
 
 ```{r Use B1 to create an (easily viewable) tibble with summary information on each storm}
-#summary info includes volume, time length, magnitude (volume / timelength)
+#summary info includes volume, time length, intensity (volume / timelength)
 
 vol_extracter <- function( a ){
   a[1]
@@ -131,6 +129,35 @@ rm( vol_extracter, timelength_extracter)
 ```
 
 
-```{r save the storm summary table}
+```{r calculate area of hysteresis loops using polyarea(). Save indices to new column "H_Index" in storms_info}
+
+#get a unique list of storm starts. Ensure Na values are not included.
+stormsstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
+
+#init counters
+stormcount <- 0 
+
+
+for( ID in stormsstarts){
+ 
+  stormcount <- stormcount + 1
+  
+  stormdata <- filter( B1, Storm_ID == ID ) %>% filter( !is.na(SpCond_uScm) )
+  
+  #Don't calculate a polyarea() hysteresis index if there isn't a loop
+  if(max(stormdata$Discharge) != stormdata$Discharge[nrow(stormdata)]){
+    storms_info[stormcount, "H_Index"] <- 
+      polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
+  } else {
+    storms_info[stormcount, "H_Index"] <- NaN
+  }
+}
+
+rm(stormsstarts, stormcount, ID, stormdata)
+```
+
+
+```{r save the storm summary table and edited B1}
 write_csv(storms_info,"./Storm_Summaries.csv")
+write_csv(B1, "../Visualize/B1_viz.csv")
 ```

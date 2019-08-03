@@ -10,6 +10,9 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages(pacman)
 #install.packages(grid, gridExtra, cowplot)
 pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot)
+
+#revert to the ggplot default theme in case ggplot2 setheme settings have been changed.
+theme_set(theme_classic())
 ```
 #Environment Dependencies: B1 and storm_info
 #This document is designed to let me look at graphs of per-storm hysteresis and, hopefully, see differences between seasons
@@ -60,19 +63,24 @@ storms_info <- storms_info %>% arrange( Season, vol_bin)
 ```{r bulk hysteresis visualisation}
 #Loops through storms by season, graphing them, storing them in a list, and then graphing the entire list in a grid
 
-plot_storm = function ( ID, data = filter( B1, Storm_ID == ID) ) {
+plot_storm <- function ( ID, data = filter( B1, Storm_ID == ID) ) {
+  stormmetadata <- filter(storms_info, Storm_ID == ID)  
+  
+  if( nrow(data) > 3 ){
     ggplot( data, aes(x = Discharge, y = SpCond_uScm, color = DateTime)) +
-                        geom_path( arrow = arrow( angle = 40,
-                           ends = "last",
-                           length = unit(0.1, "inches"),
-                           type = "closed" ) ) +
-                        ggtitle( label = paste("Hysteresis of", ID), 
-                                 subtitle = paste("with Vol_bin",
-                                                                                  storms_info$vol_bin[ storms_info$Storm_ID == ID ] ,
-                                                                                  "; Hour length:",
-                                                                                  storms_info$length_H[ storms_info$Storm_ID == ID ],
-                                                                                  "; H *index*:", storms_info$H_Index[storms_info$Storm_ID == ID] %>% round(3) )) 
-    
+                          geom_path( arrow = arrow( angle = 40,
+                             ends = "last",
+                             length = unit(0.1, "inches"),
+                             type = "closed" ) ) +
+                          ggtitle( label = paste("Hysteresis of", ID), 
+                                   subtitle = paste("with Vol_bin",
+                                                    stormmetadata$vol_bin,
+                                                    "; Hour length:",
+                                                    stormmetadata$length_H,
+                                                    "; H *index*:", 
+                                                    if_else( is.nan(stormmetadata$H_Index), 0, stormmetadata$H_Index) %>% round(3) )) +
+      theme( legend.position = "none" )
+  }
 }
 
 
@@ -81,8 +89,8 @@ for( Season in storms_info$Season %>% unique() ){
   myplots <- lapply(storms_info$Storm_ID[ storms_info$Season == Season],
                     plot_storm)
   
-  png( paste("./Season Plots/", Season, "_Plot_Grid.png", sep = ""), width = 30, height = 30, units = "in", res = 200)
-  plot_grid(plotlist = myplots, nrow = 7 ) %>% print()
+  png( paste("./Season Plots/", Season, "_Plot_Grid.png", sep = ""), width = 40, height = 40, units = "in", res = 200)
+  plot_grid(plotlist = myplots, nrow = 20 ) %>% print()
   dev.off()
 }
   

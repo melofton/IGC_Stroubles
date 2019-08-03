@@ -67,7 +67,7 @@ last_plot()
 
 
 
-```{r graph every single discharge point}
+```{r graph every single discharge point we have}
 
 #Look at patterns of discharge to identify storms and rainy seasons
 ggplot(data = B1, aes(x = DateTime, y = Discharge, color = Flag_High_Discharge)) + geom_point() + geom_path()

@@ -1,0 +1,594 @@
+---
+title: "Poster Visuals"
+author: "Colin Baciocco"
+date: "7/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages(pacman)
+pacman::p_load( tidyverse, lubridate, grid, gridExtra, cowplot, chron )
+
+theme_update( legend.key = element_rect(fill = "white",
+                                        color = "white"),
+        panel.background = element_rect(fill = "white"),
+        axis.line.x.bottom = element_line(color="black"),
+        axis.line.y.left = element_line(color="black"),
+        legend.position = "right",
+        axis.text = element_text(size = 16))
+
+# theme_update(panel.background = element_rect(fill = "aliceblue"),
+#              axis.line.x.bottom = element_line(color="black"),
+#              axis.line.y.left = element_line(color="black"))
+```
+
+#This document has the same environmental dependencies as "lag+hysteresis_graphs_CAB.Rmd"
+#If the reference csvs have been created beforehand, the needed sheets can also be loaded using the section below
+
+```{r read in csvs for B1 and filt_storms_info if they were previously saved}
+B1 <- read_csv("B1_viz.csv", col_types = list( col_datetime(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_double(), col_character(), col_double()))
+
+storms_info <- read_csv("../Identify_Storms/storm_summaries.csv")
+```
+
+
+```{r calculate "timelag_min" and add it to storms_info}
+#"timelag" is the number of minutes between one the peak of SpCond and the peak of Discharge for that storm
+
+#compute "timelag". This will be positive if SpCond peaks before discharge, negative if it doesn't.
+#If there are multiple maximums for either SpCond or discharge, the function returns the distance between the first of the two peaks
+timelag_extracter <- function( ID, stormdata = filter(B1, Storm_ID == ID )){
+  (as.numeric(stormdata$DateTime[ max(stormdata$Discharge) == stormdata$Discharge ][1]) -
+  as.numeric(stormdata$DateTime[ max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm ][1])) / 60
+}
+
+storms_info$timelag_min <- vapply( storms_info$Storm_ID, timelag_extracter, 1)
+  
+rm(timelag_extracter)
+```
+
+
+```{r calculate a normalized "timelag_min" and add it to storms_info}
+#"timelag" is the number of minutes between one the peak of SpCond and the peak of Discharge for that storm
+#we'll normalize timelag_min by dividing it by the storm's total length in hours
+
+timelag_norm_extracter <- function( ID, stormdata = filter(B1, Storm_ID == ID )){
+  (as.numeric(stormdata$DateTime[ max(stormdata$Discharge) == stormdata$Discharge ][1]) -
+  as.numeric(stormdata$DateTime[ max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm ][1])) / 
+  (3600 * storms_info$length_H[ storms_info$Storm_ID == ID ])
+}
+
+storms_info$timelag_norm <- vapply( storms_info$Storm_ID, timelag_norm_extracter, 1)
+  
+rm(timelag_norm_extracter)
+```
+
+
+
+```{r import dates for brine application and record in storms_info whether a storm is within that "season"}
+#The dates in the csv were taken from the spreadsheet in the IGC drive
+BrineDates <- read_csv("VT_Facilities_BrineDates.csv")$Date
+
+#it's totally possible to automate turning "BrineDates" into something that's usable for classifying "SaltSeason," but I'm just going to do it visually.
+BrineDates <- BrineDates[ c(1,6,7,10,11,16,17,20) ]
+
+#estimate start and end dates for salt deposition in the years when VT facilities didn't provide data
+#This averaging method doesn't address how, on one year, brining started AFTER the the new year, but I think its estimate is good enough. For the mo', we'll just make ensure that that value isn't added.
+j <- yday(BrineDates)
+uBrine_Start <- j[ ( j > 182 ) ]
+uBrine_End <- j[ j < 183 & j > 5 ]
+
+uBrine_Start <- mean(uBrine_Start)
+uBrine_End <- mean(uBrine_End)
+
+
+
+#"Salt Season" extends one month beyond the last salting event
+#there may be a conflict in running this "+" operation with both chron and lubridate loaded
+BrineSeasons <- data.frame( Season = interval(BrineDates[1],BrineDates[2]+days(31), tzone = "EST"))
+
+#Load the "saltseasons" for which we have actual dates
+for( i in c(3,5,7) ){
+  BrineSeasons <- add_row( BrineSeasons, Season = interval(BrineDates[i],BrineDates[i+1]+days(31), tzone = "EST"))
+}
+
+#load the "salt seasons" for which we lack dates
+for( i in c(12, 15, 18) ){
+  start <- parse_date_time( paste( month.day.year(jul = uBrine_Start, origin = c(1, 1, 2000+i))$month,
+                                   month.day.year(jul = uBrine_Start, origin = c(1, 1, 2000+i))$day,
+                                   month.day.year(jul = uBrine_Start, origin = c(1, 1, 2000+i))$year),
+                            "m d y")
+  end <- parse_date_time( paste( month.day.year(jul = uBrine_End, origin = c(1, 1, 2000+i+1))$month,
+                                   month.day.year(jul = uBrine_End, origin = c(1, 1, 2000+i+1))$day,
+                                   month.day.year(jul = uBrine_End, origin = c(1, 1, 2000+i+1))$year),
+                            "m d y")
+                            
+                            
+  BrineSeasons <- add_row( BrineSeasons,
+                         Season = interval( start, end + days(31), tzone = "EST"))
+}
+
+
+storms_info$SaltSeason <- vapply( parse_date_time(storms_info$Storm_ID, c("ymd HMS","ymd")),
+                                  function( a ){
+                                    b <- "out"
+                                    for( s in 1:nrow(BrineSeasons) ){
+                                      if( a %within% BrineSeasons$Season[s] ) b <- "in"
+                                    }
+                                    b
+                                  },
+                                  FUN.VALUE = "")
+
+
+rm( i, s, a, j, BrineDates, BrineSeasons, uBrine_Start, uBrine_End, start, end)
+```
+
+
+
+```{r select only storms where it seems like sensor wasn't out of the water at the storm's start or end}
+badstorms <- c()
+
+for( ID in storms_info$Storm_ID){
+  
+  stormdata <- filter( B1, Storm_ID == ID )
+  
+  if( max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm[1] |
+      max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm[nrow(stormdata)] ){
+    badstorms[length(badstorms)+1] <- ID
+  }
+}
+
+filt_storms_info <- filter( storms_info, !(Storm_ID %in% badstorms))
+
+rm( ID, stormdata, badstorms)
+```
+
+
+
+```{r make and save one graph with each storm's timelag_min on the y and date on the x}
+
+ggplot( filt_storms_info, mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min, color = SaltSeason)) +
+  geom_point() +
+  ggtitle("Timelag Between SpCond Peak and Discharge Peak of Select Storms") +
+  xlab("DateTime") +
+  ylab("timelag (Minutes)") +
+  geom_hline( yintercept = 0, color = "black", linetype = "dotted")
+
+ggsave( "./Timelag_Plot.png", width = 8, height = 6, units = "in")
+```
+
+
+
+```{r produce per-storm lag graphs for discharge and water quality}
+#this also prints "timelag", and reuses a lot of code from "lag+hysteresis_graphs_CAB.Rmd"
+#To get this to run, one may need to create a folder named "Per-Storm Timelag Plots." (It wasn't automatically created because I didn't add a gitignore file to the folder, and I didn't add the file higher-level gitignores are able to specify that .pngs in ANY subdirectory shouldn't be added to github) 
+
+#init counter
+storm_month <- 0
+
+loopstart <- Sys.time()
+
+#Loop through each storm, graphing and saving them one-by-one IF there's more than a few rows of data.
+for( ID in filter( filt_storms_info, H_Index > 150)$Storm_ID ){
+  
+  graphstart <- Sys.time()
+  
+  #pick out the data we're going to use 
+  stormdata <- filter(B1, Storm_ID == ID)
+  stormmetadata <- filter( filt_storms_info, Storm_ID == ID)
+  
+  
+  #if the "storm" has more than two or three rows of data, graph and save it
+  if( nrow(stormdata) > 6 ){
+  
+    #make graphs
+    p_discharge <- ggplot( stormdata ) +
+      #the function ensuring that the per-storm discharge graph has a common scale is commented out
+      #coord_cartesian( ylim = c(0, max(B1$Discharge) ) ) +
+      geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue") +
+      geom_vline( xintercept = stormdata$DateTime[ max(stormdata$Discharge) == stormdata$Discharge ], color = "purple") +
+      xlab("")
+    
+    p_spcond <- ggplot( stormdata ) +
+      #Common scale for per-storm WQ graph is also commented out
+      #coord_cartesian( ylim = c(0, max( B1$SpCond_uScm[!is.na(B1$SpCond_uScm)] ) ) ) +
+      geom_path( mapping = aes( x = DateTime, y = SpCond_uScm), color = "brown" ) +
+      geom_vline( xintercept = stormdata$DateTime[ max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm ], color = "purple") +
+      xlab("")
+    
+    hyst <- ggplot( stormdata, aes(x = Discharge, y = SpCond_uScm, color = DateTime) ) +
+      geom_path(arrow = arrow( angle = 40, ends = "last", length = unit(0.1, "inches"), type = "closed" ) )
+    
+    #only make a new graph for the discharge and conductivity over the entire month if it's a new month
+    if( storm_month != month(ID) ){
+      storm_month <- month(ID)
+      d_month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
+                             mapping = aes( x = DateTime, y = Discharge, color = Flag_High_Discharge )) +
+        geom_path() +
+        labs( title = paste("Overall", month.name[storm_month],"Discharge"))
+      
+      #also make a monthly graph for whatever WQ measure is in the hysteresis plot
+      q_month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
+                             mapping = aes( x = DateTime, y = SpCond_uScm)) +
+        geom_path(color = "brown") +
+        labs( title = paste("Overall", month.name[storm_month],"SpCond_uScm"))
+      }
+    
+      
+    #combine the graphs as one grob, or "graphics object", and add some descriptive text at the top
+    p <- arrangeGrob( arrangeGrob( arrangeGrob( textGrob( paste( "Storm ID:", ID ) ),
+                                   textGrob( paste("DateTime of Printing:", Sys.time())),
+                                   textGrob( paste( "Number of Storm Rows:", nrow(stormdata))),
+                                   textGrob( paste( "Volume:", stormmetadata$Vol_mcubed %>%
+                                                       round(3),  "m^3",
+                                                      "    ",
+                                                      "Time Span:", stormmetadata$length_H, "Hours",
+                                                      "    ", 
+                                                      "*Intensity*:", stormmetadata$Intensity %>%
+                                                       round(3), "m^3 / Hr")),
+                                     textGrob( paste( "Number of NaN WQ values in Storm:",
+                                                      sum(is.na(stormdata$SpCond_uScm))
+                                                      )),
+                                     textGrob( paste( "Hysteresis *Index*:", stormmetadata$H_Index %>%
+                                                       round(3),
+                                                      "    ",
+                                                      "Time Difference Between Sp_Peak and Discharge Peak:",
+                                                      stormmetadata$timelag_min,
+                                                      "minutes")),
+                                     nrow = 6),
+                                   d_month_graph,
+                                   q_month_graph,
+                                   nrow = 3),
+                      arrangeGrob(p_discharge, p_spcond, nrow = 2),
+                      nrow = 2 )
+    
+    #save the grob as a picture
+    png( paste( "./Per-Storm Timelag Plots/", ID, ".png", sep = "" ),
+         width = 10, height = 12, units = "in", res = 200)
+    grid.draw(p)
+    dev.off()
+    
+    print( paste( "Graphing for", ID, "completed in", Sys.time() - graphstart, "seconds" ) )
+  }
+}
+
+
+print( paste( "Graphing for all storms completed in", Sys.time() - loopstart, "minutes" ) )
+rm(p_discharge, p_spcond, hyst, p, ID, stormdata, stormmetadata, loopstart, graphstart, d_month_graph, q_month_graph, storm_month)
+```
+
+
+```{r for each year, graph timelag against Julian Day}
+
+for( year in unique(year(filt_storms_info$Storm_ID))){
+
+  png( paste("./Timelag by Year/Timelag of ", year, ".png", sep = ""), width = 8, height = 6, units = "in", res = 200)
+
+  print( ggplot( filter(filt_storms_info, year(Storm_ID) == year), mapping = aes( x = parse_date_time(Storm_ID, "y-m-d H:M:S"), y = timelag_min)) +
+    geom_point() +
+    theme_half_open() +
+    labs(title = paste(year, "'s Timelag Between SpCond Peak and Discharge Peak", sep = ""),
+         subtitle = "(Displaying storms without SpCond peaks at first row of storm data)") +
+    xlab("DateTime") +
+    ylab("timelag (Minutes)") +
+    geom_hline( yintercept = 0, linetype = "dotted")
+  )
+
+  
+  dev.off()
+}
+
+
+theme_update(legend.position="right")
+
+rm(year)
+```
+
+
+```{r plot every single storm's timelag vs Julian Day}
+ggplot( filt_storms_info, mapping = aes( x=yday( parse_date_time(Storm_ID,
+                                                                 c("ymd HMS","ymd"))),
+                                       y=timelag_min,
+                                       color = SaltSeason)) +
+  geom_point() +
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  geom_segment( mapping = aes( xend=yday( parse_date_time(Storm_ID, c("ymd HMS","ymd"))),
+                               yend=0)) +
+  coord_cartesian(ylim = c(-600,500)) +
+  labs(title= "Lag Time between In-Storm Peaks of Specific \nConductivity and Discharge Vs. Day of Year",
+       x="Julian Day (1-365)",
+       y="Lag Time (Minutes)",
+       color="Within 'Salt Season?'") +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
+  theme(legend.position = c(0.83, 0.9))
+  
+
+ggsave( "./Poster Visuals/Overall Timelag.png", width = 5, height = 4, units = "in", dpi = 400)
+```
+
+
+```{r plot every single storm's normalized timelag vs Julian Day and put a boxplot next to it}
+
+#create the plot of timelag_norm vs Julian Day
+norm_julian <- ggplot( filt_storms_info, mapping = aes( x= numStorm_ID,
+                                                         y= timelag_norm,
+                                                         color= SaltSeason)) +
+  geom_point() +
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  geom_segment( mapping = aes( xend=yday( parse_date_time(Storm_ID, c("ymd HMS","ymd"))),
+                               yend=0)) +
+  labs(title= "Intra-Storm Variation for Specific \nConductivity Vs. Day of Year",
+       x="Julian Day (1-365)",
+       y="Normalized Lag Time",
+       color="Within \n'Salt \nSeason?'") +
+  scale_color_manual( values = c("darkred","chocolate2")) +
+  theme(title = element_text(size = 17),
+        legend.position = "none")
+  
+
+maxmin_julian <- ggplot( filt_storms_info, mapping = aes( x = yday(Storm_ID),
+                                                          y = MinMax_SpCond,
+                                                          color = SaltSeason )) +
+  geom_point() +
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  geom_segment( mapping = aes( xend=yday(Storm_ID),
+                               yend=0)) +
+  scale_color_manual( values = c("darkred","chocolate2")) +
+  labs( x="Julian Day (1-365)",
+        y="Min-Max Diff. of Sp. Cond.",
+        legend = "'SaltSeason?'") +
+  theme(legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.margin = margin(t = 0.1),
+        title = element_text(size = 17),
+        legend.text = element_text(size = 16))
+
+
+#Create Example graphs of intrastorm timelag
+ID <- "2013-01-30 21.45.00"
+JanStorm <- filter( B1, Storm_ID == ID)
+
+cond <- ggplot(JanStorm, aes(x=DateTime, y=SpCond_uScm)) +
+  geom_path( color = "chocolate2") +
+  geom_vline( xintercept = JanStorm$DateTime[ max(JanStorm$SpCond_uScm) == JanStorm$SpCond_uScm ], color = "black") +
+  labs( title = "Timelag of a Storm \non 2013-01-30 at 21.45.00",
+        y = "Specific Conductivity (Micro Siemens per Cm)",
+        x = "") +
+  theme(panel.background = element_rect(fill = "aliceblue"),
+        axis.text = element_text(size = 10),
+        plot.title = element_text(size = 15))
+
+dis <- ggplot(JanStorm, aes(x=DateTime, y=Discharge)) +
+  geom_path( color = "cadetblue3") +
+  geom_vline( xintercept = JanStorm$DateTime[ max(JanStorm$Discharge) == JanStorm$Discharge ], color = "black") +
+  labs( y = "Discharge (m^3/s)",
+        x = "Observation DateTime") +
+  theme(panel.background = element_rect(fill = "aliceblue"),
+        axis.text = element_text(size = 10))
+
+
+plot_grid( norm_julian, maxmin_julian, nrow = 2,  align = "v" )
+ggsave( "./Norm_Timelag_Combo.png", width = 8, height = 6.5, units = "in", dpi = 500)
+
+plot_grid( cond, dis, nrow = 2, align = "v")
+ggsave( "./Timelag Ex.png", width = 4, height = 6.5, units = "in", dpi = 500)
+
+```
+
+
+```{r plot MinMax_SpCond}
+ggplot(filt_storms_info, aes(x = yday, y = MinMax_SpCond, color = SaltSeason)) +
+ geom_point()
+             
+  geom_segment( mapping = aes( xend=yday,
+                               yend=0))
+
+MinMax_SpCond_stat <- filt_storms_info %>% group_by(SaltSeason) %>% summarize( median(MinMax_SpCond))
+Norm_stat <- filt_storms_info %>% group_by(SaltSeason) %>% summarize( median(timelag_norm))
+```
+
+
+```{r boxplots of timelag "inside and outside" salt season}
+
+ggplot( filt_storms_info, mapping = aes( x=SaltSeason, y=timelag_min, color = SaltSeason)) +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(-600,500)) +
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  labs(title = "\n",
+       x="'Salt Season'?",
+       y="") +
+  scale_x_discrete( labels = c("in" = paste("in (n=",
+                                            nrow(filter(filt_storms_info,
+                                                        SaltSeason == "in")),
+                                            ")", sep = ""),
+                               "out" = paste("out (n=",
+                                             nrow(filter(filt_storms_info,
+                                                         SaltSeason == "out")),
+                                             ")", sep = "")))
+
+ggsave( "./Poster Visuals/Boxplot of Timelag.png", width = 4, height = 3, units = "in", dpi = 400)
+```
+
+
+```{r boxplots of normalized timelag "inside and outside" salt season}
+ggplot( filt_storms_info, mapping = aes( x=SaltSeason, y=timelag_norm, color = SaltSeason)) +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
+  geom_boxplot() +
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  labs(title = "\n",
+       x="'Salt Season'?",
+       y="") +
+  scale_x_discrete( labels = c("in" = paste("in (n=",
+                                            nrow(filter(filt_storms_info,
+                                                        SaltSeason == "in")),
+                                            ")\nmedian = :",
+                                             median(filter(filt_storms_info,
+                                                         SaltSeason == "in")$timelag_norm) %>%
+                                              round(2),
+                                            sep = ""),
+                               "out" = paste("out (n=",
+                                             nrow(filter(filt_storms_info,
+                                                         SaltSeason == "out")),
+                                             ")\nmedian = :",
+                                             median(filter(filt_storms_info,
+                                                         SaltSeason == "out")$timelag_norm) %>%
+                                               round(2),
+                                             sep = ""))) +
+  theme(legend.position = "none")
+
+ggsave( "Normalized Timelag Boxplot.png", width = 2.5, height = 3, units = "in", dpi = 400)
+```
+
+
+```{r graph timelag against storm intensity}
+ggplot( filt_storms_info, mapping = aes(x = Intensity, y = timelag_min)) +
+  geom_point() +
+  xlab("Intensity (m^3/hr)")
+```
+
+
+
+
+```{r calculate the amount of time in which specific conductivity exceeds a certain level}
+CondData <- filter( B1, SpCond_uScm > 282)
+
+#We'll just assume that a row with conductivity above a certain level means that there was a fifteen minute period with conductivity above a ceratain level
+High_Cond_Time <- 15 * nrow(CondData)
+High_Cond_Time
+
+High_Cond_Time / (60*24)
+
+rm(CondData)
+```
+
+
+```{r make and save "lag graphs" for poster}
+stormdata <- filter(B1, Storm_ID == _______ )
+
+p_discharge <- ggplot( stormdata ) +
+      #the function ensuring that the per-storm discharge graph has a common scale is commented out
+      #coord_cartesian( ylim = c(0, max(B1$Discharge) ) ) +
+      geom_path( mapping = aes( x = DateTime, y = Discharge ), color = "blue") +
+      geom_vline( xintercept = stormdata$DateTime[ max(stormdata$Discharge) == stormdata$Discharge ], color = "purple")
+      xlab("")
+    
+p_spcond <- ggplot( stormdata ) +
+    #Common scale for per-storm WQ graph is also commented out
+    #coord_cartesian( ylim = c(0, max( B1$SpCond_uScm[!is.na(B1$SpCond_uScm)] ) ) ) +
+    geom_path( mapping = aes( x = DateTime, y = SpCond_uScm), color = "brown" ) +
+    geom_vline( xintercept = stormdata$DateTime[ max(stormdata$SpCond_uScm) == stormdata$SpCond_uScm ], color = "purple")
+    xlab("")
+```
+
+
+```{r make and save a graph of hysteresis *indices* vs Julian Day}
+ggplot( filt_storms_info, mapping = aes( x=yday( Storm_ID ),
+                                   y=H_Index,
+                                   color=SaltSeason)) +
+  geom_point() +
+  labs(title="Area-Based Hyeresis Indices vs Day of Year",
+       x = "") +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
+  theme(title = element_text(size = 7),
+        legend.title = element_text(size = 6),
+        legend.position = "none", legend.box = "horizontal")
+
+ggsave("./Poster Visuals/Julian_Hysteresis.png", width = 4.5, height = 2, dpi = 300)
+```
+
+
+```{r produce hysteresis and timelag graphs for storm on 2013-01-30 21.45.00}
+ID <- "2013-01-30 21.45.00"
+JanStorm <- filter( B1, Storm_ID == ID)
+
+theme(panel.background = element_rect(fill = "aliceblue"),
+             axis.title = element_text(size = 8),
+             plot.title = element_text(size = 12))
+
+#graph SpConductivity
+cond <- ggplot(JanStorm, aes(x=DateTime, y=SpCond_uScm)) +
+  geom_path( color = "chocolate2") +
+  geom_vline( xintercept = JanStorm$DateTime[ max(JanStorm$SpCond_uScm) == JanStorm$SpCond_uScm ], color = "black") +
+  labs( title = "Intrastorm Timelag and Hysteresis for a \nStorm on 2013-01-30 at 21.45.00",
+        y = "Specific Conductivity (Micro Siemens per Cm)",
+        x = "") +
+  theme(panel.background = element_rect(fill = "aliceblue"))
+
+dis <- ggplot(JanStorm, aes(x=DateTime, y=Discharge)) +
+  geom_path( color = "cadetblue3") +
+  geom_vline( xintercept = JanStorm$DateTime[ max(JanStorm$Discharge) == JanStorm$Discharge ], color = "black") +
+  labs( y = "Discharge (m^3/s)",
+        x = "Observation DateTime") +
+  theme(panel.background = element_rect(fill = "aliceblue"))
+
+  
+hyst <- ggplot(JanStorm, aes(x=Discharge, y=SpCond_uScm, color = DateTime) ) +
+      geom_path(arrow = arrow( angle = 30, ends = "last",
+                               length = unit(0.1, "inches"), type = "closed" )) +
+  labs( title = "Example Hysteresis Loop for a\nstorm on 2013-01-30 at 21.45.00 ",
+        y = "Specific Conductivity (Micro Siemens per Cm)",
+        x = "Discharge (m^3/s)",
+        color = "DateTime \nof Hysteresis \nLoop \n(to left)") + 
+  theme( legend.key.height = unit( 3, "mm"),
+         panel.background = element_rect(fill = "aliceblue"))
+
+ggsave( "./JanHysteresis.png", width = 4, height = 4, dpi = 500 )
+  
+
+
+png( paste( "./Poster Visuals/", ID, "PosterViz.png"), width = 6, height = 9, units = "in", res = 300 )
+grid.draw( arrangeGrob( cond,
+                        dis,
+                        hyst,
+                        nrow = 3))
+dev.off()
+rm(dis, cond, hyst, JanStorm)
+```
+
+```{r graph specific conductivity at the start and end of each storm vs Julian Day}
+ggplot( filt_storms_info, mapping = aes( x = yday( Storm_ID), y = Start_SpCond, color = SaltSeason )) +
+  geom_point()
+
+ggplot( filt_storms_info, mapping = aes( x = yday( Storm_ID), y = End_SpCond, color = SaltSeason )) +
+  geom_point()
+```
+
+
+```{r graph and save the flux of specific conductivity}
+ggplot( filt_storms_info, mapping = aes( x = yday( Storm_ID), y = Flux_SpCond, color = SaltSeason )) +
+  geom_point()
+
+ggsave( "./Poster Visuals/Julian SpCond Flux.png", )
+
+ggplot( filt_storms_info, mapping = aes( x = SaltSeason, y = Flux_SpCond, color = SaltSeason )) +
+  geom_boxplot()
+
+ggplot( filt_storms_info, mapping = aes( x=SaltSeason, y=Flux_SpCond, color = SaltSeason)) +
+  scale_color_manual( values = c("cadetblue3","chocolate2")) +
+  geom_boxplot()+
+  geom_hline( yintercept = 0, linetype = "dotted") +
+  labs(title = "\n",
+       x="'Salt Season'?") +
+  scale_x_discrete( labels = c("in" = paste("in (n=",
+                                            nrow(filter(filt_storms_info,
+                                                        SaltSeason == "in")),
+                                            "; median = :",
+                                             median(filter(filt_storms_info,
+                                                         SaltSeason == "in")$Flux_SpCond),
+                                             ")",
+                                            sep = ""),
+                               "out" = paste("out (n=",
+                                             nrow(filter(filt_storms_info,
+                                                         SaltSeason == "out")),
+                                             "; median = :",
+                                             median(filter(filt_storms_info,
+                                                         SaltSeason == "out")$Flux_SpCond),
+                                             ")",
+                                             sep = "")
+                               )
+                    ) +
+  theme(legend.position = "none")
+
+```

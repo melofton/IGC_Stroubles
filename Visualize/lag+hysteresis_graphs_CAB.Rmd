@@ -8,7 +8,11 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load( tidyverse, lubridate, grid, gridExtra )
+
+#revert to the ggplot default theme in case ggplot2 setheme settings have been changed.
+theme_set(theme_grey())
 ```
+
 
 #Environment Dependencies: B1 (the finalized sheet) with an added column where storms have been identified.
                           #storms_info -- Like the added "Storm_ID" column in B1, storms_info can be generated using code that's in the "Storm_Identifier+Characterizer" file.
@@ -53,22 +57,32 @@ for( ID in stormsstarts ){
       xlab("")
     
     hyst <- ggplot( stormdata, aes(x = Discharge, y = SpCond_uScm, color = DateTime) ) +
-      geom_path(arrow = arrow( angle = 40, ends = "last", length = unit(0.1, "inches"), type = "closed" ) )
+      geom_path(arrow = arrow( angle = 40, ends = "last",
+                               length = unit(0.1, "inches"), type = "closed" )) 
+      
     
     #only make a new graph for the discharge and conductivity over the entire month if it's a new month
-    if( storm_month != month(ID) ){
+    #if( storm_month != month(ID) ){
       storm_month <- month(ID)
       d_month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
                              mapping = aes( x = DateTime, y = Discharge, color = Flag_High_Discharge )) +
         geom_path() +
-        ggtitle(paste("Overall", month.name[storm_month],"Discharge"))
+        ggtitle(paste("Overall", month.name[storm_month],"Discharge")) +
+        annotate("rect",
+                 xmin = stormdata$DateTime[1], xmax = stormdata$DateTime[nrow(stormdata)],
+                 ymin = min(stormdata$Discharge), ymax = max(stormdata$Discharge),
+                 fill = NA, linetype = 1, color = "red", size = 1)
       
       #also make a monthly graph for whatever WQ measure is in the hysteresis plot
       q_month_graph <- ggplot( filter(B1, month(DateTime) == storm_month & year(DateTime) == year(ID)),
                              mapping = aes( x = DateTime, y = SpCond_uScm)) +
         geom_path(color = "brown") +
-        ggtitle(paste("Overall", month.name[storm_month],"SpCond_uScm"))
-      }
+        ggtitle(paste("Overall", month.name[storm_month],"SpCond_uScm")) +
+        annotate("rect",
+                 xmin = stormdata$DateTime[1], xmax = stormdata$DateTime[nrow(stormdata)],
+                 ymin = min(stormdata$SpCond_uScm), ymax = max(stormdata$SpCond_uScm),
+                 fill = NA, linetype = 1, color = "red", size = 1)
+      #}
     
       
     #combine the graphs as one grob, or "graphics object", and add some descriptive text at the top

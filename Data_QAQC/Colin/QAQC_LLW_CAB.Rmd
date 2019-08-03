@@ -36,8 +36,6 @@ B1_WQ <- read_csv("../6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
   mutate(Bridge = 1) %>%
   #It seemed like all the WQ for repeated DateTimes were the same... I thought it would be okay to drop every row with a repeated date time after the first row. (See "duplicates.R" for verification that every row with a repeated date time also has repeated WQ sensor values.)
   distinct( DateTime, .keep_all = TRUE)
-
-
 ```
 
 
@@ -164,9 +162,14 @@ B1_QA <- B1_QA %>%
   mutate(SpCond_uScm = ifelse( Flag_SpCond_uScm == 2, NaN, SpCond_uScm),
          pH = ifelse( Flag_pH == 2, NaN, pH),
          Turb_NTU = ifelse( Flag_pH == 2, NaN, Turb_NTU))
-
 ```
 
+#Rename "B1_QA" "B1." This the name every other "colin file" assumes the water quality dataset is called. Also, remove all the other objects QAQCing has created.
+```{r}
+B1 <- B1_QA
+
+rm(B1_QA, B1_intrp_stage, B1_stage_QA, B1_stage, B1_WQ)
+```
 
 #Save the merged, quality-assured file in the "Colin" QAQC Directory
 ```{r}
