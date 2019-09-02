@@ -1,0 +1,170 @@
+---
+title: "Storm Identifier"
+author: "Mary Lofton and Colin Baciocco"
+date: "7/10/2019"
+output: html_document
+---
+
+#This code identifies "storms" (continuous periods of high discharge). To record them, it adds a cell in the column "Storm_ID" containing the start date and time of the storm to each row within the storm event.
+#Na values within "Storm_ID" mean that the row is not within a storm. Further code using Storm_ID should reflect this, of course.
+#This also contains a section of code calculating each storm's discharge volume and a bunch of other summary statistics.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages(pacman)
+pacman::p_load( tidyverse, lubridate, geometry)
+```
+
+
+```{r Read in QAQC-ed Bridge 1 data and add a flagging column for high discharge "storm" values}
+
+B1 <- read_csv("../Data_QAQC/Colin/B1.csv") %>%
+  mutate( DateTime = parse_date_time( DateTime, "ymd H M S"),
+        #Create a new column where 1 means discharge is above a certain percentile and 0 means it's not
+        #Before separating by hum and only working by time and discharge, we identifified about 120 storms with a 99th percentile criterion and 609 with a 90th.
+          Flag_High_Discharge = ifelse( Discharge > quantile( Discharge, 0.93, names = FALSE), 1, 0) )
+
+write.csv(B1, file = "B1_93_percentile.csv")
+```
+
+
+```{r Identify storms based on "Flag_High_Discharge". Add a "Storm_ID" column holding each storm's start date.}
+#This version identifies a storm at three different points:
+# 1. when discharge drops below the Flag_High_Discharge percentile
+# 2. when there's over an hour of difference between the DateTime of the current and previous "storm" rows. 
+# 3. when discharge drops back down to a minimum and starts to rise again.
+# To accomplish this identification, the loop works with the full, finalized dataset instead of only the portion including storms. 
+#We identify the same number of storms with this method (I don't think there are all that many events where discharge bottoms out RIGHT below the 90th percentile and then jumps back up over it within the hour), but it's good to be thorough.
+
+
+# #create a dataset which only holds rows corresponding to "storms" (i.e. rows where discharge is at or above the 90th quantile )
+# stormdata <- B1 %>% filter(Flag_High_Discharge == 1)
+
+#create a column to hold the storm identifier values.
+B1$Storm_ID <- NA
+
+#create a counter for storm ID
+storm_ID <- NA
+
+#create a counter for the date of the last "storm" row
+last_stormr <- 0
+
+#loop through storm dataset and assign identifiers. As the value assigned to each row depends on values in the row before it, the loop starts on the second row. This skipping may mean that the dataset starts with a storm the first row may be unidentified, but we manually correct the error with a line of code below.
+for(i in 2:nrow(B1) ){
+  
+  if( B1$Flag_High_Discharge[i] == 1 ){
+     
+    if( (as.numeric(B1$DateTime[i]) - as.numeric(last_stormr)) >= 3600 
+        | B1$Discharge[i-1] >= B1$Discharge[i] & B1$Discharge[i] < B1$Discharge[i+1]
+        ){
+          storm_ID <- paste( B1$DateTime[i] )
+          B1[i,"Storm_ID"] <- storm_ID
+        } else {
+          B1[i,"Storm_ID"] <- storm_ID
+        }
+    
+    
+    last_stormr <- B1$DateTime[i]
+  }
+}
+
+#Correct the ID for the first row by identifying it as a storm, if it's a storm 
+if( B1$Flag_High_Discharge[1] == 1 )
+{
+  B1[ 1, "Storm_ID" ] <- paste( B1$DateTime[1] )
+}
+
+
+#format Storm_ID to not contain a colon and thus be easily printable
+B1 <- mutate( B1, Storm_ID = gsub(":",".", Storm_ID) )
+
+
+rm( i, storm_ID, last_stormr)
+
+write.csv(B1, file = "storm_Id_9_2_2019.csv")
+```
+
+
+```{r calculate the volume of each storm.}
+#create a new column in B1 to record storm volume.
+#It needs to be initialized as "NaN" (NOT "NA") to avoid issues with saving and reading B1 as a csv. Apparently, "NaN" is associated with floats (ie, doubles), while NA is not.
+
+
+B1$Storm_Vol <- NaN
+
+#get a unique list of storm starts. Ensure Na is not included.
+stormsstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
+
+for( ID in stormsstarts ){
+  stormdata <- filter( B1, Storm_ID == ID )
+
+  vol <- integrate( splinefun( stormdata$DateTime, stormdata$Discharge ),
+                    stormdata$DateTime[1], stormdata$DateTime[nrow(stormdata)], 
+                    #It may be possible to reduce the number of subdivisions to get this to speed up.
+                    subdivisions = nrow(stormdata) + 10 )
+  
+  B1[ B1$Storm_ID %in% ID, "Storm_Vol" ] <- vol$value
+}
+
+
+rm( stormsstarts, stormdata, ID, vol)
+
+write.csv(B1, file = "volume_9_2_2019.csv")
+```
+
+
+```{r Use B1 to create an (easily viewable) tibble with summary information on each storm}
+#summary info includes volume, time length, intensity (volume / timelength)
+
+vol_extracter <- function( a ){
+  a[1]
+}
+
+#This returns the timelength in seconds
+timelength_extracter <- function( a ){
+  a[length(a)] %>% as.numeric() - a[1] %>% as.numeric()
+}
+
+storms_info <- B1 %>% group_by( Storm_ID ) %>%
+  summarize( Vol_mcubed = vol_extracter(Storm_Vol), length_H = timelength_extracter(DateTime) / 3600, Intensity = Vol_mcubed / length_H ) %>%
+  #drop the "NA" row which summarizes all non-storm events
+  filter( !is.na(Storm_ID) )
+
+rm( vol_extracter, timelength_extracter)
+
+write.csv(storms_info, file = "storm_info_9_2_2019.csv")
+```
+
+
+```{r calculate area of hysteresis loops using polyarea(). Save indices to new column "H_Index" in storms_info}
+
+#get a unique list of storm starts. Ensure Na values are not included.
+stormsstarts <- B1$Storm_ID[!is.na(B1$Storm_ID)] %>% unique()
+
+#init counters
+stormcount <- 0 
+
+
+for( ID in stormsstarts){
+ 
+  stormcount <- stormcount + 1
+  
+  stormdata <- filter( B1, Storm_ID == ID ) %>% filter( !is.na(SpCond_uScm) )
+  
+  #Don't calculate a polyarea() hysteresis index if there isn't a loop
+  if(max(stormdata$Discharge) != stormdata$Discharge[nrow(stormdata)]){
+    storms_info[stormcount, "H_Index"] <- 
+      polyarea(x=stormdata$Discharge, y=stormdata$SpCond_uScm) / (max(stormdata$Discharge) - min(stormdata$Discharge))
+  } else {
+    storms_info[stormcount, "H_Index"] <- NaN
+  }
+}
+
+```
+
+
+```{r save the storm summary table and edited B1}
+write_csv(storms_info,"./Storm_Summaries.csv")
+write_csv(B1, "../Visualize/B1_viz.csv")
+```
