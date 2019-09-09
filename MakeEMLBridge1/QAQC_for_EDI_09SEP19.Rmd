@@ -15,7 +15,7 @@ pacman::p_load(tidyverse, lubridate)
 
 #read in Bridge WQ 1 data
 ```{r}
-B1_WQ <- read_csv("../6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
+B1_WQ <- read_csv("C:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/Data_QAQC/6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
@@ -39,14 +39,14 @@ B1_WQ <- read_csv("../6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
 ```
 
 ```{r}
-write.csv(B1_WQ, file = "B1_WQ_9_2_2019.csv")
+write.csv(B1_WQ, file = "C:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/Bridge1_WQ.csv",row.names = FALSE)
 ```
 
 
 #Read-in, interp, and QAQC for Bridge 1 stage
 ```{r echo=FALSE}
 
-B1_stage <- read_csv("../6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
+B1_stage <- read_csv("C:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/Data_QAQC/6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
   #get rid of rows with unit descriptions
   slice(-c(1:2)) %>%
   #make sure numbers are recognized as numbers, dates as dates, etc.
@@ -62,7 +62,8 @@ B1_stage <- read_csv("../6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
   #Also filter out NaN values for stage.
   filter( !is.na(Lvl_m) )
 
-write.csv(B1_stage, file = "B1_Stage_9_2_2019.csv")
+write.csv(B1_stage, file = "C:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/Bridge1_stage.csv",
+          row.names = FALSE)
 
 
 
