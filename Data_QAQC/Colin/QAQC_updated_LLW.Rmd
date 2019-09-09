@@ -173,7 +173,7 @@ B1_QA <- B1_QA %>%
          pH = ifelse( Flag_pH == 2, NaN, pH),
          Turb_NTU = ifelse( Flag_pH == 2, NaN, Turb_NTU))
 
-write.csv(B1_QA, file = "B1_QA_9_2_2019.csv")
+write.csv(B1_QA, file = "B1_QA_9_2_2019.csv", row.names = FALSE)
 #215,572 obs to 146,034 = 67.7% remaining
 #this does not remove the rows that are <0.1 m for stage... which needs to be done. 
 ```
