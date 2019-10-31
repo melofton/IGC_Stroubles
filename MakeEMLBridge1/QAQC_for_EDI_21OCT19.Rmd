@@ -71,7 +71,7 @@ abline(v=0.16,col="red")
 abline(v=0.2,col="red")
 abline(v=0.25,col="red")
 
-write.csv(B1_stage_QA, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/stage_temp.csv",row.names = FALSE)
+# write.csv(B1_stage_QA, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/stage_temp.csv",row.names = FALSE)
 
 
 ```
@@ -89,7 +89,7 @@ B1 <- left_join(B1_WQ_merge, B1_stage_merge) %>%
          Flag_Turb_NTU = ifelse(!is.na(Stage_interp) & Stage_interp < 0.16 , ifelse(Flag_Turb_NTU == 0,2,12), Flag_Turb_NTU)) %>%
   select(-Lvl_m,-Discharge_cms,-Flag_Lvl_m,-Flag_Discharge_cms,-Stage_interp)
   
-write.csv(B1, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/WQ_temp.csv",row.names = FALSE)
+# write.csv(B1, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/WQ_temp.csv",row.names = FALSE)
 
 
 
