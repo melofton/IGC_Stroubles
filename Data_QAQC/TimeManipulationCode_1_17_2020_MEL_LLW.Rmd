@@ -1,0 +1,174 @@
+---
+title: "Preliminary New Sensor Data Analysis"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+  
+  
+  
+#####note final csv to use to visualize is B1_1+17_2020 and starts at line 136
+---
+
+```{r}
+pacman::p_load(tidyverse, lubridate)
+```
+ 
+#read in new Bridges Conductivity  Data
+#saved in IGC_Stroubles --> Data_QAQC
+```{r}
+B1_C1 <- read.csv("Cond_B1_0_20190712.csv")
+B1_C2 <- read.csv("Cond_B1_0_20191106.csv")
+B2_C1 <- read.csv("Cond_b2_0_20190712.csv")
+B2_C2 <- read.csv("Cond_b2_0_20191106.csv")
+
+```
+#merge the data sets
+```{r}
+B1_new <- rbind(B1_C1, B1_C2)
+B2_new <- rbind(B2_C1, B2_C2)
+```
+#write new csv
+```{r}
+write.csv(B1_new, file = "B1_New.csv")
+write.csv(B2_new, file = "B2_New.csv")
+```
+#read in edited csv
+```{r}
+b1_new <- read.csv("B1_New.csv")
+b2_new <- read.csv("B2_New.csv")
+```
+
+
+#changing Date to Month & Year & Day
+#currently Date is in mm/day/year
+```{r}
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  #The "meridiem offset" in the older code doesn't seem to be needed. It looks like times are pulled correctly from the excel files.
+b1_new %>% mutate(DateTime = as.POSIXct(DateTime,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Conductivity_Full = as.double(Conductivity_Full),
+         Temp_F = as.double(Temp_F),
+         Conductivity_Sp = as.double(Conductivity_Sp),)%>%
+  mutate(Bridge = 1) %>%
+  #It seemed like all the WQ for repeated DateTimes were the same... I thought it would be okay to drop every row with a repeated date time after the first row. (See "duplicates.R" for verification that every row with a repeated date time also has repeated WQ sensor values.)
+  distinct( DateTime, .keep_all = TRUE)
+```
+
+#read in stage
+```{r}
+B1_stage <- read_csv("Stage_new.csv") %>%
+  #get rid of rows with unit descriptions
+  #slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(DateTime = as.POSIXct(DateTime,format="%m/%d/%Y %H:%M",tz=Sys.timezone() ),
+         record = as.double(record),
+         Lvl_m = as.double(Lvl_m)) %>%
+  #calculate datetime from date, time, AM/PM
+  #mutate(DateTime = Date + Time + meridiemoffset*3600) %>%
+  #select only the columns we want
+  select(DateTime, record, Lvl_m) %>%
+  #filter out every row with a repeated DateTime after the first. Again, see "duplicates.R" for a more in-depth examination of why duplicate rows in this data.
+  distinct( DateTime, .keep_all = TRUE ) %>%  
+  #Also filter out NaN values for stage.
+  filter( !is.na(Lvl_m) )
+write.csv(B1_stage, file = "B1_Stage_12_19_2019.csv")
+```
+
+#QA for stage
+```{r}
+B1_stage_new <- read.csv("B1_stage_12_19_2019.csv")
+
+B1_stage_QA <- B1_stage_new %>%
+  mutate( bridge = 1, Flag_Lvl_m = ifelse(Lvl_m < 0.07 | Lvl_m > 4, 1, 0))
+write.csv(B1_stage_QA, file = "B1_stage_QA.csv")
+#note: no values less than 0.07 for level anyway
+```
+
+#discharge calculations
+```{r}
+stageToDischarge <- function( a ) {
+    
+    if( a < 0.7 ){
+        return( 4.89292 * a ^ 1.9887 )
+    } else {
+        return( 13.599 * a - 7.0945 )
+    }
+}
+#calculate and add discharge to stage sheet
+B1_stage_QA$Discharge <- sapply( B1_stage_QA$Lvl_m, stageToDischarge)
+rm(stageToDischarge)
+
+b1_new <- b1_new[ b1_new$DateTime %in% B1_stage_QA$DateTime, ]
+#Add discharge and stage, along with stage flags, to the main sheet. Entries are matched by DateTime
+b1_new <- b1_new %>% mutate( Lvl_m = B1_stage_QA[ B1_stage_QA$DateTime %in% b1_new$DateTime, ][["Lvl_m"]],
+                           Discharge = B1_stage_QA[ B1_stage_QA$DateTime %in% b1_new$DateTime, ][["Discharge"]],
+                           Flag_Lvl_m = B1_stage_QA[ B1_stage_QA$DateTime %in% b1_new$DateTime, ][["Flag_Lvl_m"]])
+
+#Old way to do method in "mutate" is below. They do the same thing -- just experimenting here
+# B1_WQ$Lvl_m <- B1_stage_QA$Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+# B1_WQ$Discharge <- B1_stage_QA$Discharge[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+# B1_WQ$Flag_Lvl_m <- B1_stage_QA$Flag_Lvl_m[B1_stage_QA$DateTime %in% B1_WQ$DateTime]
+```
+
+
+#QA for conductivity
+```{r}
+#Flag values if they're too high or low. 1 == flagged, 0 == not-flagged
+B1_QA <- b1_new %>%
+  mutate(Flag_Temp_F = ifelse(Temp_F < -20 | Temp_F > 100, 1, 0),
+         Flag_SpCond_uScm = ifelse(Conductivity_Sp < 50 | Conductivity_Sp > 2000 | Lvl_m < 0.07 , 1, 0)) %>%
+  mutate(Flag_SpCond_uScm = ifelse( Lvl_m < 0.07 , 2, Flag_SpCond_uScm))
+  
+```
+
+#dropping rows?
+```{r}
+#Drop rows that with values that are flagged by the value themselves
+#B1_QA <- B1_QA %>%
+#  filter(Flag_Temp_F != 1,
+#         Flag_SpCond_uScm != 1) %>%
+#Drop values that are flagged by height, but don't drop their row
+#  mutate(SpCond_uScm = ifelse( Flag_SpCond_uScm == 2, NaN, SpCond_uScm))
+```
+
+#save final csv
+```{r}
+B1 <- B1_QA
+write_csv(B1, "B1.csv")
+```
+
+
+#quick vizualization
+```{r}
+B1 <- read_csv("B1.csv") %>%
+  mutate(DateTime = as.POSIXct(DateTime, format = "%m/%d/%Y %H:%M"))
+plot1 <- ggplot(data = B1, aes(x = DateTime, y = Conductivity_Sp, colour = Flag_SpCond_uScm))+
+  geom_point()+
+  theme_bw()
+plot1
+
+plot2 <- ggplot(data = subset(B1,month(DateTime)==10), aes(x = DateTime, y = Conductivity_Sp, colour = Flag_SpCond_uScm))+
+  geom_point()+
+  theme_bw()
+plot2
+```
+
+```{r}
+plot3 <- ggplot(data = B1, aes(x = Discharge, y = Conductivity_Sp, colour = Flag_SpCond_uScm))+
+  geom_point()+
+  theme_bw()
+plot3
+```
+
+
+
+#isolate storms during June-November
+```{r}
+plot3data <- subset(B1,month(B1$DateTime) == 10 %in%
+plot4 <- ggplot(data = plot3data, aes(x = DateTime, y = Conductivity_Sp, colour = Flag_SpCond_uScm))+
+  geom_point()+
+  theme_bw()
+plot4
+```
+
+
+
