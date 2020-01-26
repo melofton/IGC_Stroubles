@@ -64,7 +64,8 @@ B1_stage <- read_csv("./6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
 B1_stage_QA <- B1_stage %>%
   mutate(Discharge_cms = ifelse(Lvl_m < 0.7, 4.89292 * Lvl_m ^ 1.9887,13.599 * Lvl_m - 7.0945)) %>% #function to calculate discharge
   mutate(Flag_Lvl_m = ifelse(Lvl_m > 4, 1, 0),
-         Flag_Discharge_cms = ifelse(Lvl_m > 4, 1, 0))
+         Flag_Discharge_cms = ifelse(Lvl_m > 4, 1, 0),
+         Discharge_cms_perc = ifelse(Lvl_m >= quantile(Discharge_cms, probs = 0.95, na.rm = TRUE),1,0))
 
 hist(B1_stage_QA$Lvl_m, breaks = seq(0,2,by = 0.05))
 abline(v=0.16,col="red")
@@ -82,12 +83,13 @@ B1_stage_merge <- B1_stage_QA
 
 B1_WQ_merge <- B1_QA 
 
+#NOTE THAT THIS VERSION HAS A FLAG FOR DISCHARGE PERCENTILE WHICH SHOULD BE REMOVED IN THE DATA VERSION FOR EDI!!
 B1 <- left_join(B1_WQ_merge, B1_stage_merge) %>%
   mutate(Stage_interp = na.approx(Lvl_m, maxgap = 4, rule = 2),
-         Flag_SpCond_uScm = ifelse(!is.na(Stage_interp) & Stage_interp<0.25,ifelse(Flag_SpCond_uScm == 0,2,12), Flag_SpCond_uScm),
+         Flag_SpCond_uScm = ifelse(!is.na(Stage_interp) & Stage_interp<0.25,ifelse(Flag_SpCond_uScm == 0,2,12), ifelse(Discharge_cms_perc == 1,3,Flag_SpCond_uScm)),
          Flag_pH = ifelse(!is.na(Stage_interp) & Stage_interp < 0.2, ifelse(Flag_pH == 0,2,12), Flag_pH),
          Flag_Turb_NTU = ifelse(!is.na(Stage_interp) & Stage_interp < 0.16 , ifelse(Flag_Turb_NTU == 0,2,12), Flag_Turb_NTU)) %>%
-  select(-Lvl_m,-Discharge_cms,-Flag_Lvl_m,-Flag_Discharge_cms,-Stage_interp)
+  select(-Lvl_m,-Discharge_cms,-Flag_Lvl_m,-Flag_Discharge_cms,-Stage_interp,-Discharge_cms_perc)
   
 # write.csv(B1, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/WQ_temp.csv",row.names = FALSE)
 
@@ -110,7 +112,7 @@ B1_viz2 <- B1 %>%
          Flag_DO_mgL = as.factor(Flag_DO_mgL),
          Flag_Batt_V = as.factor(Flag_Batt_V)) 
 
-yrz <- unique(B1_viz$Year)
+yrz <- unique(B1_viz2$Year)
 months <- c(1:12)
 var_cols <- c(3:9)
 flag_cols <- c(10:16)
@@ -129,7 +131,7 @@ for (i in 1:length(yrz)){
     p1 <- ggplot(data = month, aes_string(x = "DateTime", y = vars[k], colour = flags[k]))+
       geom_point()+
       theme_bw() +
-      scale_color_manual(values = c("gray","red","blue"))+
+      scale_color_manual(values = c("gray","red","blue","black"))+
       ggtitle(paste(vars[k],yrz[i],months[j],sep = "-"))
     ggsave(p1, filename = paste0("C:/Users/Mary Lofton/Documents/IGC/Stroubles_project/EDI_data_viz/",paste(vars[k],yrz[i],months[j],sep = "-"),".png"),height = 7, width = 14, units = "in")
   }
