@@ -65,7 +65,14 @@ B1_stage_QA <- B1_stage %>%
   mutate(Discharge_cms = ifelse(Lvl_m < 0.7, 4.89292 * Lvl_m ^ 1.9887,13.599 * Lvl_m - 7.0945)) %>% #function to calculate discharge
   mutate(Flag_Lvl_m = ifelse(Lvl_m > 4, 1, 0),
          Flag_Discharge_cms = ifelse(Lvl_m > 4, 1, 0),
-         Discharge_cms_perc = ifelse(Lvl_m >= quantile(Discharge_cms, probs = 0.95, na.rm = TRUE),1,0))
+         Discharge_cms_perc = ifelse(Lvl_m >= quantile(Discharge_cms, probs = 0.90, na.rm = TRUE),1,0))
+
+# check <- B1_stage_QA[rep(1:nrow(B1_stage_QA), each = 2), ]
+# check[1:nrow(check) %% 2 == 0, ] <- NA
+# 
+# check1 <- check %>%
+#   mutate(Stage_interp = na.approx(Lvl_m, maxgap = 12, rule = 2),
+#          DateTime_interp = na.approx(as.POSIXct.numeric(DateTime, origin = "1960-01-01"), maxgap = 12, rule = 2))
 
 hist(B1_stage_QA$Lvl_m, breaks = seq(0,2,by = 0.05))
 abline(v=0.16,col="red")
@@ -84,7 +91,7 @@ B1_stage_merge <- B1_stage_QA
 B1_WQ_merge <- B1_QA 
 
 #NOTE THAT THIS VERSION HAS A FLAG FOR DISCHARGE PERCENTILE WHICH SHOULD BE REMOVED IN THE DATA VERSION FOR EDI!!
-B1 <- left_join(B1_WQ_merge, B1_stage_merge) %>%
+B1 <- full_join(B1_WQ_merge, B1_stage_merge) %>%
   mutate(Stage_interp = na.approx(Lvl_m, maxgap = 4, rule = 2),
          Flag_SpCond_uScm = ifelse(!is.na(Stage_interp) & Stage_interp<0.25,ifelse(Flag_SpCond_uScm == 0,2,12), ifelse(Discharge_cms_perc == 1,3,Flag_SpCond_uScm)),
          Flag_pH = ifelse(!is.na(Stage_interp) & Stage_interp < 0.2, ifelse(Flag_pH == 0,2,12), Flag_pH),
