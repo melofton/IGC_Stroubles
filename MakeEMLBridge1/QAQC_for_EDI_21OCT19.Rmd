@@ -101,7 +101,8 @@ B1_WQ_merge <- B1_QA %>%
 B1 <- left_join(B1_WQ_merge, B1_stage_merge) %>%
   mutate(Flag_SpCond_uScm = ifelse(!is.na(Lvl_m) & Lvl_m<0.26, ifelse(Flag_SpCond_uScm == 0,2,12), Flag_SpCond_uScm),
          Flag_pH = ifelse(!is.na(Lvl_m) & Lvl_m < 0.2, ifelse(Flag_pH == 0,2,12), Flag_pH),
-         Flag_Turb_NTU = ifelse(!is.na(Lvl_m) & Lvl_m < 0.16 , ifelse(Flag_Turb_NTU == 0,2,12), Flag_Turb_NTU)) 
+         Flag_Turb_NTU = ifelse(!is.na(Lvl_m) & Lvl_m < 0.16 , ifelse(Flag_Turb_NTU == 0,2,12), Flag_Turb_NTU)) %>%
+  distinct()
   
 write.csv(B1, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/Bridge_1.csv",row.names = FALSE)
 
