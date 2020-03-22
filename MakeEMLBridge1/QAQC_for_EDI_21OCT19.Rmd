@@ -77,7 +77,7 @@ B1_stage_QA_2 <- B1_stage_QA_1 %>%
 B1_stage_QA <- B1_stage_QA_2 %>% #adding flags if Lvl_m is above 4 (!!)
   mutate(Flag_Lvl_m = ifelse(Lvl_m > 4, 1, 0),
          Flag_Discharge_cms = ifelse(Lvl_m > 4, 1, 0),
-         Discharge_cms_perc = ifelse(Lvl_m >= quantile(Discharge_cms, probs = 0.90, na.rm = TRUE),1,0)) #adding flag for 90th percentile of Discharge
+         Discharge_cms_perc = ifelse(Discharge_cms >= quantile(Discharge_cms, probs = 0.90, na.rm = TRUE),1,0)) #adding flag for 90th percentile of Discharge
 
 
 hist(B1_stage_QA$Lvl_m, breaks = seq(0,2,by = 0.05))

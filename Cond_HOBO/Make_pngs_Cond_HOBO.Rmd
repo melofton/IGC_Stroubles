@@ -1,0 +1,118 @@
+---
+title: "'New' Conductivity HOBO monthly plots"
+author: "Mary Lofton & Lauren Wind"
+date: "Mar. 22, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#load packages
+```{r}
+#install.packages("pacman")
+pacman::p_load(tidyverse, lubridate, zoo,cowplot)
+```
+
+#read in Bridge 1 data conductivity and discharge data
+```{r}
+B1 <- read_csv("./B1_QAQC_3_20_2020_LLW.csv") %>%
+  mutate(DateTime = as.POSIXct(DateTime,format="%m/%d/%Y %H:%M",tz=Sys.timezone()))
+```
+
+#Visualize how much data this QA is flagging
+```{r}
+##HISTOGRAM OF SPCOND
+hist(B1$Sp.Conductivity)
+
+##HISTOGRAM OF LVL_M
+hist(B1$Lvl_m,  breaks = seq(0,2,by = 0.01),main = "Red line is if we cut off at 0.1 m")
+abline(v = 0.1, lwd = 2, col = "red")
+
+hist(B1$Lvl_m,  breaks = seq(0,2,by = 0.01), main = "Red line is if we cut off at 0.02 m")
+abline(v = 0.02, lwd = 2, col = "red")
+
+#on manual inspection, these low-flow values are from Aug-Oct 2019
+# check <- B1 %>%
+#   filter(Lvl_m <=0.1)
+
+#check relationship btwn. discharge and cond.
+plot(B1$Discharge,B1$Sp.Conductivity)
+#now on log scale
+plot(log(B1$Discharge),log(B1$Sp.Conductivity))
+```
+
+#Pngs with a Lvl_m cutoff at 0.1 m
+```{r}
+##DATA VIZ FOR DISCHARGE AND CONDUCTIVITY ONLY
+B1_viz <- B1 %>%
+  mutate(Discharge_cms_perc = ifelse(Discharge >= quantile(Discharge, probs = 0.90, na.rm = TRUE),1,0),
+         Flag_SpCond_uScm = ifelse(!is.na(Lvl_m) & Lvl_m < 0.1,1,Flag_SpCond_uScm)) %>%
+  select(DateTime, Sp.Conductivity, Flag_SpCond_uScm, Discharge, Discharge_cms_perc) %>%
+  mutate(Month = month(DateTime),
+         Year = year(DateTime),
+         Flag_SpCond_uScm = as.factor(Flag_SpCond_uScm),
+         Discharge_cms_perc = as.factor(Discharge_cms_perc)) 
+
+months <- c(6:12,1:3)
+  
+  for (j in 1:length(months)){
+    
+    month <- subset(B1_viz, Month == months[j])
+    
+    p1 <- ggplot(data = month, aes(x = DateTime,y = Sp.Conductivity, color = Flag_SpCond_uScm))+
+      geom_point()+
+      theme_bw() +
+      ggtitle(paste(months[j],"  1=out of water",sep = ""))
+    
+    p2 <- ggplot(data = month, aes(x = DateTime,y = Discharge, color = Discharge_cms_perc))+
+      geom_point()+
+      theme_bw() +
+      ggtitle(paste(months[j],"  1=90th perc.",sep = ""))
+    
+    p3 <- plot_grid(p1,p2,align = "hv", nrow = 2, ncol = 1)
+    
+    print(p3)
+    # ggsave(p3, filename = paste0("C:/Users/Mary Lofton/Documents/IGC/Stroubles_project/EDI_data_viz/Cond+Discharge/",paste("Cond_Discharge",yrz[i],months[j],sep = "-"),".png"),height = 14, width = 14, units = "in", scale = 0.5)
+  }
+
+
+```
+#Pngs with a Lvl_m cutoff at 0.02 m
+```{r}
+##DATA VIZ FOR DISCHARGE AND CONDUCTIVITY ONLY
+B1_viz <- B1 %>%
+  mutate(Discharge_cms_perc = ifelse(Discharge >= quantile(Discharge, probs = 0.90, na.rm = TRUE),1,0),
+         Flag_SpCond_uScm = ifelse(!is.na(Lvl_m) & Lvl_m < 0.02,1,Flag_SpCond_uScm)) %>%
+  select(DateTime, Sp.Conductivity, Flag_SpCond_uScm, Discharge, Discharge_cms_perc) %>%
+  mutate(Month = month(DateTime),
+         Year = year(DateTime),
+         Flag_SpCond_uScm = as.factor(Flag_SpCond_uScm),
+         Discharge_cms_perc = as.factor(Discharge_cms_perc)) 
+
+months <- c(6:12,1:3)
+  
+  for (j in 1:length(months)){
+    
+    month <- subset(B1_viz, Month == months[j])
+    
+    p1 <- ggplot(data = month, aes(x = DateTime,y = Sp.Conductivity, color = Flag_SpCond_uScm))+
+      geom_point()+
+      theme_bw() +
+      ggtitle(paste(months[j],"  1=out of water",sep = ""))
+    
+    p2 <- ggplot(data = month, aes(x = DateTime,y = Discharge, color = Discharge_cms_perc))+
+      geom_point()+
+      theme_bw() +
+      ggtitle(paste(months[j],"  1=90th perc.",sep = ""))
+    
+    p3 <- plot_grid(p1,p2,align = "hv", nrow = 2, ncol = 1)
+    
+    print(p3)
+    # ggsave(p3, filename = paste0("C:/Users/Mary Lofton/Documents/IGC/Stroubles_project/EDI_data_viz/Cond+Discharge/",paste("Cond_Discharge",yrz[i],months[j],sep = "-"),".png"),height = 14, width = 14, units = "in", scale = 0.5)
+  }
+
+
+```
+
