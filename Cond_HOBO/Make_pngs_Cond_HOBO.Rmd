@@ -2,7 +2,7 @@
 title: "'New' Conductivity HOBO monthly plots"
 author: "Mary Lofton & Lauren Wind"
 date: "Mar. 22, 2020"
-output: html_document
+output: word_document
 ---
 
 ```{r setup, include=FALSE}
