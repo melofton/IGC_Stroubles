@@ -6,7 +6,7 @@
 #https://ediorg.github.io/EMLassemblyline/articles/overview.html
 #and links therein
 
-#run QAQC_for_EDI_09SEP19 to generate the proper, QAQC'ed file for EDI
+#run QAQC_for_EDI_08MAY20 to generate the proper, QAQC'ed file for EDI
 
 # (install and) Load EMLassemblyline #####
 # install.packages('devtools')

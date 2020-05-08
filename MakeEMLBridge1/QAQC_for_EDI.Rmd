@@ -1,0 +1,245 @@
+---
+title: "StreamLab_QAQC_for_EDI"
+author: "Mary Lofton & Lauren Wind"
+date: "May 8, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#load packages
+```{r}
+#install.packages("pacman")
+pacman::p_load(tidyverse, lubridate, zoo,cowplot, readxl)
+```
+
+#read in and format Bridge 1 data
+```{r}
+B1_WQ <- read_csv("./6_14_2019 Bridge_1 WQ.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(DateTime = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Record_number = as.double(RECORD),
+         Temp_degC = as.double(Temp),
+         SpCond_uScm = as.double(Con)*1000,
+         pH = as.double(pH),
+         Turb_NTU = as.double(Turb),
+         DO_pct = as.double(DOpct),
+         DO_mgL = as.double(DOmgl),
+         Batt_V = as.double(Batt)) %>%
+  mutate(Site = "B1") %>%
+  #select only the columns we want
+  select(Site, DateTime, Temp_degC, SpCond_uScm, pH, Turb_NTU, DO_pct, DO_mgL, Batt_V) 
+
+```
+
+#Read in and format Bridge 1 stage data
+```{r}
+B1_stage <- read_csv("./6_14_2019 Bridge_1 Stage.csv", skip = 1) %>%
+  #get rid of rows with unit descriptions
+  slice(-c(1:2)) %>%
+  #make sure numbers are recognized as numbers, dates as dates, etc.
+  mutate(DateTime = as.POSIXct(TIMESTAMP,format="%m/%d/%Y %H:%M",tz=Sys.timezone()),
+         Lvl_m = as.double(Lvl_m)) %>%
+  mutate(Site = "B1") %>%
+  #select only the columns we want
+  select(Site, DateTime, Lvl_m) %>%
+  filter(DateTime <= "2018-12-31 23:50:00" & DateTime >= "2012-12-31 23:50:00")
+```
+
+#Do necessary QAQC for EDI stage/discharge dataset and write to file
+```{r}
+B1_stage_EDI <- B1_stage %>%
+  mutate(Discharge_cms = ifelse(Lvl_m < 0.7, 4.89292 * Lvl_m ^ 1.9887,13.599 * Lvl_m - 7.0945)) %>% #function to calculate discharge
+  mutate(Flag_Lvl_m = ifelse(Lvl_m > 4, 1, 0), #flag stage if flow overtops stream bank
+         Flag_Discharge_cms = ifelse(Lvl_m > 4, 1, 0)) #flag discharge if flow overtops stream bank
+
+#write to file
+write.csv(B1_stage_EDI, "c:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/stage.csv",row.names = FALSE)
+```
+
+#Do necessary interpolation to flag WQ values based on stage
+```{r}
+B1_stage_QA_0 <- B1_stage %>%
+  mutate(Discharge_cms = ifelse(Lvl_m < 0.7, 4.89292 * Lvl_m ^ 1.9887,13.599 * Lvl_m - 7.0945)) #function to calculate discharge
+
+B1_stage_QA_1 <- B1_stage_QA_0[rep(1:nrow(B1_stage_QA_0), each = 2), ] #duplicate every row
+B1_stage_QA_1[1:nrow(B1_stage_QA_1) %% 2 == 0, ] <- NA #fill every other row with NA so can interpolate 5-min values
+B1_stage_QA_1 <- B1_stage_QA_1[-719166,] #remove last row because don't need to interpolate beyond 12-31-2018 23:50:00
+
+B1_stage_QA_2 <- B1_stage_QA_1 %>%
+  mutate(Lvl_m = na.approx(Lvl_m, maxgap = 12, rule = 1), #interpolating between NAs for water level
+         DateTime = as.POSIXct(na.approx(DateTime), origin = "1970-1-1", maxgap = 12, rule = 1), #interpolating between NAs for DateTime
+         Discharge_cms = na.approx(Discharge_cms, maxgap = 12, rule = 1), #interpolating between NAs for Discharge
+         Site = ifelse(is.na(Site),"B1",Site)) #filling NAs in Site column with "Bridge 1"
+  
+B1_stage_QA <- B1_stage_QA_2 %>% #adding flags if Lvl_m is above 4 (!!)
+  mutate(Flag_Lvl_m = ifelse(Lvl_m > 4, 1, 0),
+         Flag_Discharge_cms = ifelse(Lvl_m > 4, 1, 0),
+         Discharge_cms_perc = ifelse(Discharge_cms >= quantile(Discharge_cms, probs = 0.90, na.rm = TRUE),1,0)) #adding flag for 90th percentile of Discharge
+
+#visualize how many stage observations are below height of WQ sensors
+hist(B1_stage_QA$Lvl_m, breaks = seq(0,2,by = 0.05))
+abline(v=0.16,col="red")
+abline(v=0.2,col="red")
+abline(v=0.25,col="red")
+```
+
+#Merge the two and flag pH, Turb, Cond according to Lvl
+```{r}
+B1_stage_merge <- B1_stage_QA %>%
+  mutate(DateTime = as.POSIXct(DateTime, tz = "EST"))
+
+B1_WQ_merge <- B1_WQ %>%
+  mutate(DateTime = as.POSIXct(DateTime, tz = "EST"))
+
+B1_0 <- left_join(B1_WQ_merge, B1_stage_merge) %>%
+  distinct() %>%
+  filter(DateTime <= "2018-12-31 23:45:00" & DateTime >= "2012-12-31 23:45:00")
+
+#add in flags for unreasonable sensor values
+B1_1 <- B1_0 %>%
+  mutate(Flag_Temp_degC = ifelse(Temp_degC < -5 | Temp_degC > 30, 1, 0),
+         Flag_SpCond_uScm = ifelse(SpCond_uScm < 0, 1, 0),
+         Flag_pH = ifelse(pH <0 | pH >14, 1, 0),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0, 1, 0), 
+         Flag_DO_pct = ifelse(DO_pct < 0 | DO_pct > 150, 1, 0),
+         Flag_DO_mgL = ifelse(DO_mgL < 0 | DO_mgL > 18, 1, 0),
+         Flag_Batt_V = ifelse(Batt_V < 11 | Batt_V > 13, 1, 0))
+  
+#read in calibration days
+calrecord <- read_xlsx("./YSI Calibration Log.xlsx", sheet = "6920V2 Sondes", skip = 1)
+caldates <- as.Date(unique(calrecord$Date))
+check <- date(B1_1$DateTime[1808:1809])
+
+#add in flags for sonde calibration days
+B1_2 <- B1_1 %>%
+  mutate(Flag_Temp_degC = ifelse((Temp_degC < -5 | Temp_degC > 30) & date(DateTime) %in% caldates, "1,2", 
+                                 ifelse(date(DateTime) %in% caldates,"2",Flag_Temp_degC)),
+         Flag_SpCond_uScm = ifelse(SpCond_uScm < 0 & date(DateTime) %in% caldates, "1,2", 
+                                   ifelse(date(DateTime) %in% caldates,"2",Flag_SpCond_uScm)),
+         Flag_pH = ifelse((pH <0 | pH >14) & date(DateTime) %in% caldates, "1,2", 
+                          ifelse(date(DateTime) %in% caldates,"2",Flag_pH)),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 & date(DateTime) %in% caldates, "1,2", 
+                                ifelse(date(DateTime) %in% caldates,"2",Flag_Turb_NTU)), 
+         Flag_DO_pct = ifelse((DO_pct < 0 | DO_pct > 150) & date(DateTime) %in% caldates, "1,2", 
+                              ifelse(date(DateTime) %in% caldates,"2",Flag_DO_pct)),
+         Flag_DO_mgL = ifelse((DO_mgL < 0 | DO_mgL > 18) & date(DateTime) %in% caldates, "1,2", 
+                              ifelse(date(DateTime) %in% caldates,"2",Flag_DO_mgL)),
+         Flag_Batt_V = ifelse((Batt_V < 11 | Batt_V > 13) & date(DateTime) %in% caldates, "1,2", 
+                              ifelse(date(DateTime) %in% caldates,"2",Flag_Batt_V)))
+
+#add in flags for water level pH 0.2 Turb 0.16
+B1_3 <- B1_2 %>%
+  mutate(Flag_SpCond_uScm = ifelse(SpCond_uScm < 0 & date(DateTime) %in% caldates & (!is.na(Lvl_m) & Lvl_m<0.26), "1,2,3", 
+                                   ifelse(SpCond_uScm < 0 & (!is.na(Lvl_m) & Lvl_m<0.26),"1,3",
+                                          ifelse(date(DateTime) %in% caldates & (!is.na(Lvl_m) & Lvl_m<0.26),"2,3",
+                                                 ifelse((!is.na(Lvl_m) & Lvl_m<0.26),"3",Flag_SpCond_uScm)))),
+         Flag_pH = ifelse((pH <0 | pH >14) & date(DateTime) %in% caldates & (!is.na(Lvl_m) & Lvl_m<0.2), "1,2,3", 
+                                   ifelse((pH <0 | pH >14)& (!is.na(Lvl_m) & Lvl_m<0.2),"1,3",
+                                          ifelse(date(DateTime) %in% caldates & (!is.na(Lvl_m) & Lvl_m<0.2),"2,3",
+                                                 ifelse((!is.na(Lvl_m) & Lvl_m<0.2),"3",Flag_pH)))),
+         Flag_Turb_NTU = ifelse(Turb_NTU < 0 & date(DateTime) %in% caldates & (!is.na(Lvl_m) & Lvl_m<0.16), "1,2,3", 
+                                   ifelse(Turb_NTU < 0 & (!is.na(Lvl_m) & Lvl_m<0.16),"1,3",
+                                          ifelse(date(DateTime) %in% caldates & (!is.na(Lvl_m) & Lvl_m<0.16),"2,3",
+                                                 ifelse((!is.na(Lvl_m) & Lvl_m<0.16),"3",Flag_Turb_NTU))))) 
+
+#eliminate unneeded columns
+B1_EDI <- B1_3 %>%
+  select(Site:Batt_V,Flag_Temp_degC:Flag_Batt_V)
+
+# check <- B1_EDI %>%
+#   filter_all(any_vars(. == -9999))
+
+#write to file :-)
+write.csv(B1_EDI, "C:/Users/Mary Lofton/Documents/RProjects/IGC_Stroubles/MakeEMLBridge1/WQ.csv",row.names = FALSE)
+
+
+
+```
+
+
+
+#Visualize how much data this QA is flagging - optional to run
+```{r}
+# ##DATA VIZ FOR DISCHARGE AND CONDUCTIVITY ONLY
+# B1_viz <- B1 %>%
+#   select(DateTime, SpCond_uScm, Flag_SpCond_uScm, Discharge_cms, Flag_Discharge_cms, Discharge_cms_perc) %>%
+#   mutate(Month = month(DateTime),
+#          Year = year(DateTime),
+#          Flag_SpCond_uScm = as.factor(Flag_SpCond_uScm),
+#          Flag_Discharge_cms = as.factor(Flag_Discharge_cms),
+#          Discharge_cms_perc = as.factor(Discharge_cms_perc)) 
+# 
+# yrz <- unique(B1_viz$Year)
+# months <- c(1:12)
+# 
+# for (i in 1:length(yrz)){
+#   
+#   datums <- B1_viz
+#   yr <- subset(datums, Year == yrz[i])
+#   
+#   for (j in 1:length(months)){
+#     
+#     month <- subset(yr, Month == months[j])
+#     
+#     p1 <- ggplot(data = month, aes(x = DateTime,y = SpCond_uScm, color = Flag_SpCond_uScm))+
+#       geom_point()+
+#       theme_bw() +
+#       ggtitle(paste(yrz[i],"-",months[j],"  1=negative value, 2=out of water",sep = ""))
+#     
+#     p2 <- ggplot(data = month, aes(x = DateTime,y = Discharge_cms, color = Discharge_cms_perc))+
+#       geom_point()+
+#       theme_bw() +
+#       ggtitle(paste(yrz[i],"-",months[j],"  1=90th perc.",sep = ""))
+#     
+#     p3 <- plot_grid(p1,p2,align = "hv", nrow = 2, ncol = 1)
+#     
+#     ggsave(p3, filename = paste0("C:/Users/Mary Lofton/Documents/IGC/Stroubles_project/EDI_data_viz/Cond+Discharge/",paste("Cond_Discharge",yrz[i],months[j],sep = "-"),".png"),height = 14, width = 14, units = "in", scale = 0.5)
+#   }
+# }
+# 
+# 
+# ##DATA VIZ FOR ALL VARIABLES
+# B1_viz2 <- B1 %>%
+#   mutate(Month = month(DateTime),
+#          Year = year(DateTime),
+#          Flag_Temp_degC = as.factor(Flag_Temp_degC),
+#          Flag_SpCond_uScm = as.factor(Flag_SpCond_uScm),
+#          Flag_pH = as.factor(Flag_pH),
+#          Flag_Turb_NTU = as.factor(Flag_Turb_NTU),
+#          Flag_DO_pct = as.factor(Flag_DO_pct),
+#          Flag_DO_mgL = as.factor(Flag_DO_mgL),
+#          Flag_Batt_V = as.factor(Flag_Batt_V)) 
+# 
+# yrz <- unique(B1_viz2$Year)
+# months <- c(1:12)
+# var_cols <- c(3:9)
+# flag_cols <- c(10:16)
+# vars <- c("Temp_degC","SpCond_uScm","pH","Turb_NTU","DO_pct","DO_mgL","Batt_V")
+# flags <- c("Flag_Temp_degC","Flag_SpCond_uScm","Flag_pH","Flag_Turb_NTU","Flag_DO_pct","Flag_DO_mgL","Flag_Batt_V")
+# 
+# for (k in 1:length(var_cols)){
+# 
+#   datums <- B1_viz2[,c(2,var_cols[k],flag_cols[k],17,18)]
+#   
+# for (i in 1:length(yrz)){
+#   yr <- subset(datums, Year == yrz[i])
+#   
+#   for (j in 1:length(months)){
+#     month <- subset(yr, Month == months[j])
+#     p1 <- ggplot(data = month, aes_string(x = "DateTime", y = vars[k], colour = flags[k]))+
+#       geom_point()+
+#       theme_bw() +
+#       scale_color_manual(values = c("gray","red","blue","black"))+
+#       ggtitle(paste(vars[k],yrz[i],months[j],sep = "-"))
+#     ggsave(p1, filename = paste0("C:/Users/Mary Lofton/Documents/IGC/Stroubles_project/EDI_data_viz/",paste(vars[k],yrz[i],months[j],sep = "-"),".png"),height = 7, width = 14, units = "in")
+#   }
+# }
+# }
+```
+
+
